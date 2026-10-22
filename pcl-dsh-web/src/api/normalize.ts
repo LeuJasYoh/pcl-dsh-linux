@@ -1,6 +1,7 @@
 import type {
   AccountSummary,
   AppSettings,
+  ArtifactRef,
   AvailableRuntimes,
   BackgroundAsset,
   CatalogItem,
@@ -13,6 +14,7 @@ import type {
   JobState,
   JobView,
   LogTail,
+  PackPreview,
   PluginDetails,
   PluginEntry,
   ProviderPreset,
@@ -380,4 +382,33 @@ export function normalizeBackgroundAsset(raw: unknown): BackgroundAsset {
   const record = isRecord(raw) ? (isRecord(raw.settings) ? raw.settings : raw) : {}
   return { background: asString(record.background ?? record.url) }
 }
+
+export function normalizePackPreview(raw: unknown): PackPreview | null {
+  if (!isRecord(raw)) return null
+  const item = isRecord(raw.preview) ? raw.preview : raw
+  const previewId = asString(item.previewId ?? item.id)
+  if (!previewId) return null
+  return {
+    previewId,
+    name: asString(item.name),
+    format: asString(item.format),
+    version: asString(item.version),
+    dshVersion: asString(item.dshVersion),
+    profiles: asArray(item.profiles).map((value) => asString(value)).filter(Boolean),
+    unpackedBytes: asNumberOrNull(item.unpackedBytes ?? item.size) ?? 0,
+    warnings: asArray(item.warnings).map((value) => asString(value)).filter(Boolean),
+  }
+}
+
+export function normalizeArtifactRef(raw: unknown): ArtifactRef | null {
+  if (!isRecord(raw)) return null
+  const artifactId = asString(raw.artifactId ?? raw.id)
+  if (!artifactId) return null
+  return {
+    artifactId,
+    filename: asString(raw.filename ?? raw.name),
+    size: asNumberOrNull(raw.size) ?? 0,
+  }
+}
+
 

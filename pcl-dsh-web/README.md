@@ -18,16 +18,18 @@ npm run preview    # 预览构建产物
 
 ```
 src/
-  api/          client.ts（fetch 封装、CSRF、401 处理、FormData）、types.ts、normalize.ts、index.ts
+  api/          client.ts（fetch 封装、CSRF、401、FormData、XHR 上传进度）、types.ts、
+                normalize.ts、index.ts（含 packs/artifacts）
   components/   AppShell/PageHeader/SideNav/FooterBar/AppIcon、首页启动区与任务卡、
                 BaseModal/ConfirmDialog/InstanceDialog/AccountDialog、TaskProgressStrip
   router/       8 个业务路由 + /login，登录守卫
   stores/       auth / appState / instances / settings / notify / jobs（任务 + SSE）
   styles/       tokens.css（HMCL 蓝调色板与度量）、base/layout/components.css
-  utils/        display/backgrounds/errors/validation/clipboard/jobs
+  utils/        display/backgrounds/errors/validation/clipboard/jobs/download
   views/        Login/Home/Instances/Runtimes/Accounts/Plugins/Packs/Logs/Settings
-  assets/       backgrounds/whale-01..05.png、icons/hdsl.png（桌面版原始资源）
+  assets/       backgrounds/whale-01..05.webp、icons/hdsl.webp（由桌面版 PNG 转 WebP）
 public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取）
+public/favicon.webp 网站图标（由 hdsl.webp 复制）
 ```
 
 ## 视觉与交互约定
@@ -67,6 +69,12 @@ public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取�
   `GET /api/plugin-catalog/{owner}/{repo}?refresh=`（targets）；status=INSTALLABLE/VIEW_PROJECT/UNRESOLVED。
 - 资源：`POST /api/settings/background`（multipart，返回 `{background:"/api/assets/backgrounds/..."}`，
   再经 `PUT /api/settings` 生效）、`GET /api/assets/backgrounds/{name}`、`GET /api/artifacts/{id}`。
+- 整合包：`POST /api/packs/preview`（multipart "file"，200，previewId 30 分钟有效）、
+  `POST /api/packs/import` → 202 Job(IMPORT_PACK，result `{instanceId,name}`)、
+  `POST /api/packs/export` → 202 Job(EXPORT_PACK，result `{artifactId,filename,size}`)。
+- 实例复制/改版本：`POST /api/instances/{id}/copy` → 202 Job(COPY_INSTANCE，result `{instanceId,name}`)；
+  `PUT /api/instances/{id}` 按 HTTP 状态区分：200=普通字段已保存，202=版本/profile 变更产生的 COPY_INSTANCE Job
+  （原实例保留）；旧后端返回 409 CONFLICT_UNSUPPORTED_CHANGE 时前端回退版本/profile 只读。
 - 后端未实现（404/405/501）或不可达时，页面显示明确的「接口尚未实现 / 加载失败」提示与重试按钮，
   绝不伪造实例、账户、日志或任务数据；轮询失败退避到 5 秒并自动恢复。
 - 登录失败区分 401（密码错误）、423（限流锁定）、403 `PASSWORD_CHANGE_REQUIRED`（强制修改初始密码）。
@@ -95,6 +103,17 @@ public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取�
 - 设置：自定义背景上传（PNG/JPEG ≤20MB → 应用预览 → 保存设置；接口未就绪时明确提示开发中）；
   内置背景仍可用，自定义背景按方案居中显示；关于页 GPL-3.0 全文与 HMCL 附加条款弹窗（文本随 `public/licenses/` 打包）。
 
+## 本增量（M3 整合包增量）完成度
+
+- 整合包页：选择 .dspack/ZIP 后经 XHR 流式上传并显示进度（可取消/重新选择）；预览展示名称、格式、包版本、
+  Harness 版本、profile、解压体积与醒目警告；导入表单（实例名称默认包名、Harness 版本可手输且提示精确版本）、
+  导入 Job 成功后自动选择新实例并跳转实例页；导出实例下拉+范围选择（web 实例仅 profile）、已停止校验、
+  导出 Job 完成后自动经 `/api/artifacts/{id}` 下载并保留“重新下载”入口。
+- 实例：复制按钮启用（弹窗输入新名称 → COPY_INSTANCE Job → 刷新并选中新实例）；编辑弹窗的 Harness 版本与
+  profile 可编辑（改版本走 COPY_INSTANCE Job、原实例保留），旧后端 409 时自动回退只读并提示。
+- 资源：5 张内置背景与图标由桌面版 PNG 转 WebP（背景 53–71 KB/张、图标 155 KB，原合计约 8.7 MB），
+  引用、设置页缩略图、首页/登录背景与 favicon 全部更新；构建产物无 PNG 背景。
+
 ## 与桌面版的已知偏差
 
 1. 桌面版状态文本位于标题栏；Web 同时提供底部 24px 状态栏（任务/后端连接/版本/许可），更适合浏览器。
@@ -102,14 +121,16 @@ public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取�
 3. 自定义背景走服务端上传与 `/api/assets/backgrounds/` 资源地址；上传后需再点“保存设置”写入配置（桌面版为本地文件路径）。
 4. 「打开 Web」使用后端返回的地址：本增量后端返回 `http://127.0.0.1:<port>/` 回环地址（反代增量后改为
    `/workbench/{id}/`）；服务器部署在远端时该地址无法直连，需等反代增量。
-5. 实例复制、整合包导入/导出、桌面版下载/插件目录之外的高级插件操作仍在后续增量；按钮禁用或给出明确说明。
-6. 插件页要求实例已停止（与后端一致）；插件目录安装需先确认目标，未解析项目只提供查看入口。
+5. 实例复制在实例卡片上以独立“复制”按钮提供（桌面版在“更多”菜单内）；交互语义一致。
+6. 插件页/导出/复制/改版本均要求实例已停止（与后端一致）；插件目录安装需先确认目标。
+7. “整个实例”导出要求实例使用非 web 的已初始化 profile（后端限制）；web 实例只能导出当前 profile。
+8. 内置背景与图标已转 WebP（保留原尺寸）；桌面版原始 PNG 不再随前端分发，可从上游 HDSL 资源重新生成。
 6. 内置背景仍为桌面版原始 PNG（合计约 7.3 MB），WebP/缩略图优化（方案 §5.7）待后续。
 
 ## 待办
 
 - Playwright 验收用例（方案 §5.4 的 15 条）与桌面版截图对照。
 - 反代增量接入后，将「打开 Web」切换为 `/workbench/{id}/` 并处理远端部署。
-- 实例复制、整合包页（预览/导入/导出/artifacts 下载）交互（M3）。
 - 插件目录分页缓存与更多筛选（M3 打磨）。
-- 内置背景转 WebP/缩略图（首屏资源目标 < 2 MB）。
+- 自定义背景缩略图/WebP 二次压缩与首屏资源监控（当前首屏约 0.4 MB）。
+- 打包发布时把 `dist/`、`public/licenses` 与静态资源接入 Spring Boot/Nginx 托管。

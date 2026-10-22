@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import iconUrl from '@/assets/icons/hdsl.png'
+import iconUrl from '@/assets/icons/hdsl.webp'
 import { useAuthStore } from '@/stores/auth'
 import { useJobStore } from '@/stores/jobs'
 import { useAppStateStore } from '@/stores/state'

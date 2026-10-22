@@ -1,8 +1,8 @@
-import whale01 from '@/assets/backgrounds/whale-01.png'
-import whale02 from '@/assets/backgrounds/whale-02.png'
-import whale03 from '@/assets/backgrounds/whale-03.png'
-import whale04 from '@/assets/backgrounds/whale-04.png'
-import whale05 from '@/assets/backgrounds/whale-05.png'
+import whale01 from '@/assets/backgrounds/whale-01.webp'
+import whale02 from '@/assets/backgrounds/whale-02.webp'
+import whale03 from '@/assets/backgrounds/whale-03.webp'
+import whale04 from '@/assets/backgrounds/whale-04.webp'
+import whale05 from '@/assets/backgrounds/whale-05.webp'
 
 export interface BuiltinBackground {
   id: string

@@ -1,4 +1,5 @@
-import { request } from './client'
+import { request, requestDetailed, uploadForm } from './client'
+import type { UploadOptions } from './client'
 import {
   normalizeAccount,
   normalizeAccounts,
@@ -10,7 +11,9 @@ import {
   normalizeInstances,
   normalizeJobAccepted,
   normalizeJobList,
+  normalizeArtifactRef,
   normalizeLogTail,
+  normalizePackPreview,
   normalizePluginDetails,
   normalizePlugins,
   normalizeProviders,
@@ -24,14 +27,19 @@ import type {
   AccountSummary,
   AppSettings,
   AuthMe,
+  ArtifactRef,
   AvailableRuntimes,
   BackgroundAsset,
   CatalogPage,
   DeleteInstanceResult,
+  ExportPackInput,
+  ImportPackInput,
   InstanceInput,
+  InstanceSaveResult,
   InstanceSummary,
   JobView,
   LogTail,
+  PackPreview,
   PluginDetails,
   PluginEntry,
   ProviderPreset,
@@ -51,12 +59,18 @@ export type {
   CatalogItem,
   CatalogPage,
   DeleteInstanceResult,
+  ExportPackInput,
+  ImportPackInput,
   InstallTarget,
   InstanceInput,
+  InstanceSaveResult,
   InstanceSummary,
   JobState,
   JobView,
   LogTail,
+  PackExportMode,
+  PackPreview,
+  ArtifactRef,
   PluginDetails,
   PluginEntry,
   ProviderPreset,
@@ -98,6 +112,28 @@ export const instancesApi = {
     normalizeInstance(await request<unknown>('POST', '/api/instances', input)),
   update: async (id: string, input: InstanceInput): Promise<InstanceSummary | null> =>
     normalizeInstance(await request<unknown>('PUT', instancePath(id), input)),
+  /**
+   * PUT /api/instances/{id}: ordinary field edits return 200 InstanceDto, while a
+   * changed Harness version/profile returns 202 + a COPY_INSTANCE Job (contract
+   * with the backend). The HTTP status is the reliable discriminator.
+   */
+  save: async (id: string, input: InstanceInput): Promise<InstanceSaveResult> => {
+    const response = await requestDetailed<unknown>('PUT', instancePath(id), input)
+    if (response.status === 202) {
+      const job = normalizeJobAccepted(response.payload)
+      if (!job) throw new MissingJobError()
+      return { instance: null, job }
+    }
+    return { instance: normalizeInstance(response.payload), job: null }
+  },
+  /** POST /api/instances/{id}/copy → 202 Job (type=COPY_INSTANCE, result {instanceId,name}). */
+  copy: async (id: string, name: string): Promise<JobView> => {
+    const job = normalizeJobAccepted(
+      await request<unknown>('POST', instancePath(id, '/copy'), { name }),
+    )
+    if (!job) throw new MissingJobError()
+    return job
+  },
   remove: async (id: string): Promise<DeleteInstanceResult> =>
     normalizeDeleteResult(await request<unknown>('DELETE', instancePath(id))),
   select: (id: string): Promise<unknown> => request<unknown>('PUT', instancePath(id, '/selection')),
@@ -245,4 +281,30 @@ export const settingsApi = {
       await request<unknown>('POST', '/api/settings/background', undefined, { formData }),
     )
   },
+}
+
+export const packsApi = {
+  /**
+   * POST /api/packs/preview (multipart field "file", 200, previewId TTL 30min).
+   * Uses XHR so large packs report upload progress; abortable via options.signal.
+   */
+  preview: async (file: File, options: UploadOptions = {}): Promise<PackPreview> => {
+    const preview = normalizePackPreview(await uploadForm<unknown>('/api/packs/preview', file, options))
+    if (!preview) throw new Error('后端返回的整合包预览数据不完整，请重试或更换整合包。')
+    return preview
+  },
+  /** POST /api/packs/import → 202 Job (type=IMPORT_PACK, result {instanceId,name}). */
+  importPack: async (input: ImportPackInput): Promise<JobView> => {
+    const job = normalizeJobAccepted(await request<unknown>('POST', '/api/packs/import', input))
+    if (!job) throw new MissingJobError()
+    return job
+  },
+  /** POST /api/packs/export → 202 Job (type=EXPORT_PACK, result {artifactId,filename,size}). */
+  exportPack: async (input: ExportPackInput): Promise<JobView> => {
+    const job = normalizeJobAccepted(await request<unknown>('POST', '/api/packs/export', input))
+    if (!job) throw new MissingJobError()
+    return job
+  },
+  /** Parse an EXPORT_PACK Job result into an artifact reference (null when incomplete). */
+  artifactFromResult: (result: unknown): ArtifactRef | null => normalizeArtifactRef(result),
 }

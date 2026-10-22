@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -183,19 +184,34 @@ class InstanceApiTest extends ApiTestSupport {
 
     @Test
     @Order(3)
-    void updateOnlySupportsNamePortAccountAndRejectsVersionProfile() throws Exception {
-        // version / profile 变更属于下个增量 → 409 中文提示
-        mvc.perform(write(put("/api/instances/" + instanceA))
+    void updateVersionChangeGoesThroughCopyJobAndProfileMustBeInitialized() throws Exception {
+        // M3：version 变更 → 202 COPY_INSTANCE Job（复制为新实例，原实例保留）
+        MvcResult versionChange = mvc.perform(write(put("/api/instances/" + instanceA))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(Map.of("name", "测试实例A", "version", "9.9.9"))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CONFLICT_UNSUPPORTED_CHANGE"))
-                .andExpect(jsonPath("$.message").value(containsString("下个增量")));
+                        .content(body(Map.of("name", "改版实例", "version", "9.9.9"))))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.id").value(containsString("j-")))
+                .andExpect(jsonPath("$.type").value("COPY_INSTANCE"))
+                .andReturn();
+        String jobId = json.readTree(versionChange.getResponse().getContentAsString()).path("id").asText();
+        JsonNode copyResult = awaitJobResult(jobId);
+        String copiedId = copyResult.path("instanceId").asText();
+        assertEquals("改版实例", copyResult.path("name").asText());
+        mvc.perform(read(get("/api/instances/" + copiedId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("改版实例"))
+                .andExpect(jsonPath("$.version").value("9.9.9"));
+        // 原实例保留且版本未变
+        mvc.perform(read(get("/api/instances/" + instanceA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value("0.1.0-rc.6"));
+        // profile 变更：空白实例没有该 profile → 400 中文提示
         mvc.perform(write(put("/api/instances/" + instanceA))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(Map.of("name", "测试实例A", "profile", "custom"))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("CONFLICT_UNSUPPORTED_CHANGE"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"))
+                .andExpect(jsonPath("$.message").value(containsString("尚未初始化")));
 
         // 名称超长 → 400
         mvc.perform(write(put("/api/instances/" + instanceA))
@@ -421,6 +437,17 @@ class InstanceApiTest extends ApiTestSupport {
             }
         }
         throw new IllegalStateException("测试环境没有可用端口");
+    }
+
+    private JsonNode awaitJobResult(String jobId) throws Exception {
+        long deadline = System.currentTimeMillis() + 15_000L;
+        JobManager.View view = jobs.view(jobId);
+        while (view.state() == JobManager.State.RUNNING && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20L);
+            view = jobs.view(jobId);
+        }
+        assertEquals(JobManager.State.SUCCEEDED, view.state(), "任务应成功：" + view.error());
+        return json.valueToTree(view.result());
     }
 
     private void awaitIdle() throws InterruptedException {

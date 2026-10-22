@@ -55,11 +55,19 @@ public class InstanceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(instances.create(body, ClientIp.of(request)));
     }
 
+    /**
+     * 普通修改（name/port/accountId）→ 200 InstanceDto；
+     * version/profile 变更 → 202 Job（type=COPY_INSTANCE，复制为新实例，原实例保留）。
+     */
     @PutMapping("/{id}")
-    public ApiDtos.InstanceDto update(@PathVariable("id") String id,
-                                      @RequestBody(required = false) ApiDtos.UpdateInstanceRequest body,
-                                      HttpServletRequest request) {
-        return instances.update(id, body, ClientIp.of(request));
+    public ResponseEntity<?> update(@PathVariable("id") String id,
+                                    @RequestBody(required = false) ApiDtos.UpdateInstanceRequest body,
+                                    HttpServletRequest request) {
+        InstanceService.UpdateOutcome outcome = instances.update(id, body, ClientIp.of(request));
+        if (outcome.job() != null) {
+            return ResponseEntity.accepted().body(outcome.job());
+        }
+        return ResponseEntity.ok(outcome.instance());
     }
 
     @DeleteMapping("/{id}")
@@ -93,5 +101,14 @@ public class InstanceController {
     @PostMapping("/{id}/launch")
     public ResponseEntity<JobManager.View> launch(@PathVariable("id") String id, HttpServletRequest request) {
         return ResponseEntity.accepted().body(instances.requestLaunch(id, ClientIp.of(request)));
+    }
+
+    /** 202 + Job（type=COPY_INSTANCE；成功 result={instanceId,name}；原实例保留）。 */
+    @PostMapping("/{id}/copy")
+    public ResponseEntity<JobManager.View> copy(@PathVariable("id") String id,
+                                                @RequestBody(required = false) ApiDtos.CopyInstanceRequest body,
+                                                HttpServletRequest request) {
+        String name = body == null ? null : body.name();
+        return ResponseEntity.accepted().body(instances.requestCopy(id, name, ClientIp.of(request)));
     }
 }

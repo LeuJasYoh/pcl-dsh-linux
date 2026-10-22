@@ -5,6 +5,8 @@ import com.hdsl.account.LaunchBinding;
 import com.hdsl.core.Instance;
 import com.hdsl.core.InstanceStore;
 import com.hdsl.core.ProcessService;
+import com.hdsl.pack.PackInspection;
+import com.hdsl.pack.PackService;
 import com.hdsl.runtime.Capabilities;
 import com.hdsl.runtime.RuntimeService;
 import com.hdsl.server.api.ApiDtos;
@@ -24,12 +26,17 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +61,6 @@ public class InstanceService {
 
     private static final String CONFLICT_INSTANCE_RUNNING = "CONFLICT_INSTANCE_RUNNING";
     private static final String CONFLICT_PORT_BUSY = "CONFLICT_PORT_BUSY";
-    private static final String CONFLICT_UNSUPPORTED_CHANGE = "CONFLICT_UNSUPPORTED_CHANGE";
     private static final String CONFLICT_RUNNING_INSTANCE = "CONFLICT_RUNNING_INSTANCE";
     private static final String CONFLICT_CUSTOM_COMMAND = "CONFLICT_CUSTOM_COMMAND";
     private static final String INSTANCE_NOT_READY = "INSTANCE_NOT_READY";
@@ -62,6 +68,15 @@ public class InstanceService {
     private static final Duration LAUNCH_TIMEOUT = Duration.ofMinutes(22);
     private static final Duration READY_TIMEOUT = Duration.ofSeconds(90);
     private static final Duration BINDING_VALIDATION_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration COPY_TIMEOUT = Duration.ofMinutes(30);
+
+    /** PUT /api/instances/{id} 的结果：普通修改返回 instance（200），version/profile 变更返回 job（202）。 */
+    public record UpdateOutcome(ApiDtos.InstanceDto instance, JobManager.View job) {
+    }
+
+    /** 一次复制/改版本任务的目标参数。 */
+    private record CopySpec(String name, String version, String profile, String accountId, String ip) {
+    }
 
     private final InstanceStore store;
     private final ProcessService processes;
@@ -143,7 +158,7 @@ public class InstanceService {
         return dto(instance);
     }
 
-    public ApiDtos.InstanceDto update(String id, ApiDtos.UpdateInstanceRequest request, String ip) {
+    public UpdateOutcome update(String id, ApiDtos.UpdateInstanceRequest request, String ip) {
         jobs.ensureIdle();
         if (request == null) {
             throw ApiException.badRequest("请求体不能为空。");
@@ -151,11 +166,12 @@ public class InstanceService {
         Instance existing = require(id);
         String requestedVersion = trim(request.version());
         String requestedProfile = trim(request.profile());
-        if (!requestedVersion.isEmpty() && !requestedVersion.equals(existing.runtimeVersion())) {
-            throw unsupportedChange();
-        }
-        if (!requestedProfile.isEmpty() && !requestedProfile.equals(existing.profile())) {
-            throw unsupportedChange();
+        boolean versionChanged = !requestedVersion.isEmpty() && !requestedVersion.equals(existing.runtimeVersion());
+        boolean profileChanged = !requestedProfile.isEmpty() && !requestedProfile.equals(existing.profile());
+        if (versionChanged || profileChanged) {
+            // M3：版本/profile 变更以“复制为新实例”实现（原实例保留），返回 202 Job。
+            return new UpdateOutcome(null, requestChangeCopy(existing, request, requestedVersion,
+                    requestedProfile, versionChanged, profileChanged, ip));
         }
         ensureStopped(existing);
         String name = trim(request.name());
@@ -180,7 +196,161 @@ public class InstanceService {
         audit.record("INSTANCE_UPDATED", ip, "id=" + id + " port=" + port
                 + " name=" + LogSanitizer.oneLine(name, 64));
         logs.append("已更新实例：" + name + "（" + id + "）");
-        return dto(updated);
+        return new UpdateOutcome(dto(updated), null);
+    }
+
+    /** POST /api/instances/{id}/copy：复制为新实例（原实例保留），返回 202 Job。 */
+    public JobManager.View requestCopy(String id, String name, String ip) {
+        Instance source = require(id);
+        ensureStopped(source);
+        String targetName = trim(name);
+        validateName(targetName);
+        CopySpec spec = new CopySpec(targetName, source.runtimeVersion(), source.profile(),
+                source.accountId(), ip);
+        audit.record("INSTANCE_COPY_REQUESTED", ip, "source=" + id
+                + " name=" + LogSanitizer.oneLine(targetName, 64));
+        logs.append("请求复制实例：" + source.name() + " → " + targetName);
+        return jobs.submit("COPY_INSTANCE", COPY_TIMEOUT, context -> copyInstance(context, id, spec));
+    }
+
+    /** PUT 版本/profile 变更的复制任务（目标为新版本/新 profile，原实例保持不变）。 */
+    private JobManager.View requestChangeCopy(Instance existing, ApiDtos.UpdateInstanceRequest request,
+                                              String requestedVersion, String requestedProfile,
+                                              boolean versionChanged, boolean profileChanged, String ip) {
+        ensureStopped(existing);
+        String name = trim(request.name());
+        if (name.isEmpty()) {
+            name = existing.name();
+        }
+        validateName(name);
+        String targetVersion = versionChanged ? requestedVersion : existing.runtimeVersion();
+        validateVersion(targetVersion);
+        String targetProfile = profileChanged ? requestedProfile : existing.profile();
+        validateProfile(targetProfile);
+        if (!"web".equals(targetProfile) && !Files.isRegularFile(
+                store.home(existing).resolve("profiles").resolve(targetProfile).resolve("package.json"))) {
+            throw ApiException.validation("这个 profile 尚未初始化，请选择已有 profile 或导入整合包。");
+        }
+        String accountId = request.accountId() == null ? existing.accountId() : trim(request.accountId());
+        validateAccount(accountId);
+        CopySpec spec = new CopySpec(name, targetVersion, targetProfile, accountId, ip);
+        audit.record("INSTANCE_CHANGE_COPY_REQUESTED", ip, "source=" + existing.id()
+                + " version=" + targetVersion + " profile=" + LogSanitizer.oneLine(targetProfile, 64));
+        logs.append("请求以复制方式修改实例版本/profile：" + existing.name() + " → " + name);
+        return jobs.submit("COPY_INSTANCE", COPY_TIMEOUT, context -> copyInstance(context, existing.id(), spec));
+    }
+
+    /** COPY_INSTANCE 任务主体：空白 web 实例直接登记；已初始化实例导出 profile → 检查 → 按导入流程创建新实例。 */
+    private Object copyInstance(JobManager.Context context, String sourceId, CopySpec spec) throws Exception {
+        Instance source = require(sourceId);
+        ensureStopped(source);
+        context.checkCancelled();
+        if (isBlankWeb(source) && "web".equals(spec.profile())) {
+            context.phase("创建空白实例副本");
+            Instance target = new Instance(InstanceStore.newId(), spec.name(), spec.version(), "web",
+                    availablePort(), "", spec.accountId());
+            Path directory = store.directory(target);
+            try {
+                Files.createDirectories(store.workspace(target));
+                Files.createDirectories(store.home(target));
+                store.add(target);
+            } catch (IOException failure) {
+                cleanupUnregistered(directory, target.id());
+                throw storeFailure(failure);
+            }
+            context.log("已复制未初始化的空白实例：" + target.name() + "（" + target.id() + "）");
+            logs.append("已复制空白实例：" + target.name() + "（" + target.id() + "）");
+            return new ApiDtos.PackImportResultDto(target.id(), target.name());
+        }
+        Path stagingBase = data.cache().resolve("pack-staging");
+        Files.createDirectories(stagingBase);
+        Path archive = Files.createTempFile(stagingBase, "copy-", ".dspack");
+        try {
+            context.phase("导出源实例 profile");
+            PackService packs = packs();
+            packs.exportProfile(store.home(source), spec.profile(), source.runtimeVersion(), packName(source),
+                    "1.0.0", archive, context::log);
+            context.checkCancelled();
+            context.phase("检查复制产物");
+            PackInspection inspection = packs.inspect(archive);
+            context.checkCancelled();
+            return importInspection(context, inspection, spec.name(), spec.version(), spec.accountId(), spec.ip());
+        } finally {
+            try {
+                Files.deleteIfExists(archive);
+            } catch (IOException ignored) {
+                // 暂存清理尽力而为。
+            }
+        }
+    }
+
+    /**
+     * 导入流程主体（移植 HDSL Controller.importPack）：暂存解压 → 安装运行时 → 移动到最终目录 →
+     * 恢复各 profile 依赖 → 登记实例；失败把目录移入 trash/failed-import-* 并清理暂存。
+     */
+    public ApiDtos.PackImportResultDto importInspection(JobManager.Context context, PackInspection inspection,
+                                                        String requestedName, String targetVersion,
+                                                        String accountId, String ip) throws Exception {
+        validateVersion(targetVersion);
+        String name = trim(requestedName);
+        if (name.isEmpty()) {
+            name = inspection.name();
+        }
+        validateName(name);
+        String profile = inspection.defaultProfile();
+        validateProfile(profile);
+        String id = InstanceStore.newId();
+        Path destination = data.instances().resolve(id);
+        Path stagingBase = data.cache().resolve("pack-staging");
+        Files.createDirectories(stagingBase);
+        Path stage = Files.createTempDirectory(stagingBase, "job-");
+        boolean registered = false;
+        try {
+            context.phase("解压整合包");
+            context.log(describe(inspection));
+            Path home = stage.resolve("dsh-home");
+            Files.createDirectories(stage.resolve("workspace"));
+            PackService packs = packs();
+            packs.extract(inspection, home, context::log);
+            context.checkCancelled();
+            context.phase("安装运行时");
+            RuntimeService runtime = runtimes.get();
+            runtime.install(targetVersion, context::log);
+            context.checkCancelled();
+            Instance target = new Instance(id, name, targetVersion, profile, availablePort(), "", accountId);
+            // 依赖恢复需要在最终路径进行（pnpm 可能写入绝对路径链接）。
+            Files.move(stage, destination);
+            if (!inspection.format().toLowerCase(Locale.ROOT).contains("snapshot")) {
+                for (String unit : inspection.profiles()) {
+                    context.checkCancelled();
+                    runtime.restoreProfile(store.home(target), unit, store.workspace(target), true, context::log);
+                }
+            }
+            context.checkCancelled();
+            store.add(target);
+            registered = true;
+            audit.record("INSTANCE_IMPORTED", ip, "id=" + id + " version=" + targetVersion
+                    + " profile=" + LogSanitizer.oneLine(profile, 64));
+            context.log("整合包已安装到新实例：" + name + "。可在实例页启动。");
+            logs.append("已导入实例：" + name + "（" + id + "）");
+            return new ApiDtos.PackImportResultDto(id, name);
+        } catch (Exception failure) {
+            if (!registered && Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+                try {
+                    Path kept = Trash.move(data, destination, "failed-import-" + id);
+                    if (kept != null) {
+                        context.log("导入未完成，本次文件保留在回收目录：" + kept.getFileName());
+                    }
+                } catch (IOException cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
+            throw failure;
+        } finally {
+            if (!registered) {
+                deleteStaging(stage);
+            }
+        }
     }
 
     public String delete(String id, String ip) {
@@ -470,11 +640,6 @@ public class InstanceService {
                 "此实例保存了旧版自定义启动命令；Web 版出于安全考虑不执行自定义命令，请创建新实例或清除该字段后再启动。");
     }
 
-    private ApiException unsupportedChange() {
-        return ApiException.conflict(CONFLICT_UNSUPPORTED_CHANGE,
-                "本增量暂不支持修改实例的版本或 profile，下个增量提供；请先删除并重新创建实例。");
-    }
-
     private void validateAccount(String accountId) {
         if (accountId == null || accountId.isBlank()) {
             return;
@@ -592,6 +757,71 @@ public class InstanceService {
         environment.keySet().removeIf(key -> key.equalsIgnoreCase("PCL_DSH_SECRET_KEY")
                 || key.equalsIgnoreCase(LaunchBinding.KEY_ENV));
         return environment;
+    }
+
+    /** 按当前 settings.proxy 构造 PackService（构造很轻；导出/检查/解包共用）。 */
+    private PackService packs() {
+        String proxy = store.setting("proxy", "");
+        try {
+            return proxy == null || proxy.isBlank() ? new PackService() : new PackService(URI.create(proxy.trim()));
+        } catch (IllegalArgumentException failure) {
+            throw ApiException.internal("代理设置无效，无法处理整合包，请检查“设置”页面。");
+        }
+    }
+
+    /** 与桌面版一致：web profile 且尚未初始化（没有 profiles/web/package.json）视为空白实例。 */
+    private boolean isBlankWeb(Instance instance) {
+        return "web".equals(instance.profile())
+                && !Files.isRegularFile(store.home(instance).resolve("profiles/web/package.json"));
+    }
+
+    private static String describe(PackInspection inspection) {
+        return "名称：" + inspection.name() + " · 格式：" + inspection.format() + " · 包版本：" + inspection.version()
+                + " · Harness：" + (inspection.dshVersion() == null ? "未声明" : inspection.dshVersion())
+                + " · Profile：" + String.join(", ", inspection.profiles())
+                + " · 解压约：" + String.format(Locale.ROOT, "%.1f MiB", inspection.unpackedBytes() / 1048576d);
+    }
+
+    /** 导出包名：小写 kebab-case；非 kebab 的实例名回退为 hdsl-<id>（与桌面版一致）。 */
+    private static String packName(Instance instance) {
+        if (instance.name().matches("[a-z0-9]+(?:-[a-z0-9]+)*")) {
+            return instance.name();
+        }
+        String id = instance.id().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+        return "hdsl-" + id;
+    }
+
+    /** 暂存目录清理：只允许删除 data/cache 下的路径。 */
+    private void deleteStaging(Path folder) {
+        if (folder == null) {
+            return;
+        }
+        Path cache = data.cache().toAbsolutePath().normalize();
+        Path normalized = folder.toAbsolutePath().normalize();
+        if (!normalized.startsWith(cache) || normalized.equals(cache)
+                || !Files.exists(normalized, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try {
+            Files.walkFileTree(normalized, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+                    Files.delete(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException {
+                    if (failure != null) {
+                        throw failure;
+                    }
+                    Files.delete(directory);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException failure) {
+            log.warn("暂存目录清理未完成：{}", failure.toString());
+        }
     }
 
     private static String trim(String value) {

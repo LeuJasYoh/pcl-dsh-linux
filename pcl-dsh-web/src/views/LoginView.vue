@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '@/api/client'
-import iconUrl from '@/assets/icons/hdsl.png'
+import iconUrl from '@/assets/icons/hdsl.webp'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifyStore } from '@/stores/notify'
 import { resolveBackground } from '@/utils/backgrounds'

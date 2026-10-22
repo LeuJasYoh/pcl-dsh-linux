@@ -16,8 +16,10 @@ const props = withDefaults(
     installedVersions: string[]
     submitting?: boolean
     submitError?: string
+    /** Set after a backend 409 fallback: version/profile become read-only again. */
+    readonlyVersionProfile?: boolean
   }>(),
-  { instance: null, submitting: false, submitError: '' },
+  { instance: null, submitting: false, submitError: '', readonlyVersionProfile: false },
 )
 
 const emit = defineEmits<{ submit: [input: InstanceInput]; close: [] }>()
@@ -34,8 +36,17 @@ const validationError = ref('')
 const availableVersions = ref<string[]>([])
 const querying = ref(false)
 const versionStatus = ref(
-  create.value ? '可选择已知版本，或直接输入完整版本号。' : '已有实例的 Harness 版本与 profile 在本增量中只读。',
+  create.value
+    ? '可选择已知版本，或直接输入完整版本号。'
+    : '可修改 Harness 版本：修改会保留原实例，并将所选 profile 复制到新版本实例。',
 )
+const profileChoices = computed(() => {
+  if (create.value) return ['web']
+  const set = new Set<string>()
+  if (props.instance?.profile) set.add(props.instance.profile)
+  for (const item of props.instance?.profiles ?? []) if (item) set.add(item)
+  return Array.from(set)
+})
 const versionEdited = ref(false)
 let queried = false
 
@@ -94,7 +105,7 @@ function submit(): void {
   }
   const versionError = validateVersion(version.value)
   if (versionError) {
-    validationError.value = create.value ? versionError : '实例的 Harness 版本无效，请重新创建实例。'
+    validationError.value = versionError
     return
   }
   const profileError = validateProfile(profile.value)
@@ -109,8 +120,8 @@ function submit(): void {
   }
   emit('submit', {
     name: name.value.trim(),
-    // Edit sends the unchanged values: the backend rejects real version/profile changes
-    // with CONFLICT_UNSUPPORTED_CHANGE and only name/port/accountId are editable here.
+    // A changed version/profile makes the backend answer 202 + COPY_INSTANCE Job;
+    // unchanged values keep the ordinary 200 InstanceDto path.
     version: version.value.trim(),
     profile: profile.value.trim(),
     port: parsePort(port.value),
@@ -147,11 +158,11 @@ function submit(): void {
           id="instance-version"
           class="input"
           :value="version"
-          :readonly="!create"
-          :disabled="submitting"
+          :readonly="readonlyVersionProfile"
+          :disabled="submitting || readonlyVersionProfile"
           data-testid="instance-version"
           placeholder="完整版本号"
-          :list="create ? 'instance-version-options' : undefined"
+          list="instance-version-options"
           @input="onVersionInput"
         />
         <button
@@ -165,18 +176,24 @@ function submit(): void {
           <AppIcon name="refresh" :size="15" />刷新版本
         </button>
       </div>
-      <datalist v-if="create" id="instance-version-options">
+      <datalist id="instance-version-options">
         <option v-for="item in versionChoices" :key="item" :value="item"></option>
       </datalist>
-      <p class="form-hint" data-testid="instance-version-status">{{ versionStatus }}</p>
-      <p v-if="!create" class="form-hint" data-testid="instance-version-readonly">
-        当前版本暂不支持修改 Harness 版本与 profile，将在下一版本提供。
+      <p class="form-hint" data-testid="instance-version-status">
+        {{ readonlyVersionProfile ? '当前后端不支持修改 Harness 版本，仅可修改名称、端口与账户。' : versionStatus }}
+      </p>
+      <p v-if="!create && !readonlyVersionProfile" class="form-hint" data-testid="instance-version-hint">
+        修改 Harness 版本会创建新的版本实例并保留原实例；profile 只能选择该实例中已有的值。
+      </p>
+      <p v-if="readonlyVersionProfile" class="form-hint" data-testid="instance-version-readonly">
+        当前后端暂不支持修改 Harness 版本或 profile（下一版本提供）；可修改名称、端口与账户。
       </p>
     </div>
 
     <div class="form-field">
-      <label class="field-label" for="instance-profile">{{ create ? '初始 Profile' : '已有 Profile' }}</label>
+      <label class="field-label" for="instance-profile">{{ create ? '初始 Profile' : 'Profile' }}</label>
       <input
+        v-if="create || readonlyVersionProfile"
         id="instance-profile"
         class="input"
         :value="profile"
@@ -184,10 +201,20 @@ function submit(): void {
         data-testid="instance-profile"
         :disabled="submitting"
       />
+      <select
+        v-else
+        id="instance-profile"
+        v-model="profile"
+        class="input"
+        data-testid="instance-profile"
+        :disabled="submitting"
+      >
+        <option v-for="item in profileChoices" :key="item" :value="item">{{ item }}</option>
+      </select>
       <p class="form-hint">
         {{ create
           ? '新实例默认使用 web。自定义 profile 需先通过整合包导入，或在 Harness 中创建。'
-          : '请选择此实例中已有的 profile；本增量不支持修改。' }}
+          : '请选择此实例中已有的 profile。' }}
       </p>
     </div>
 

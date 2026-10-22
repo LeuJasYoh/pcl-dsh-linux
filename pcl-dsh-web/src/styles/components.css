@@ -1168,3 +1168,125 @@ a.btn {
   background-repeat: no-repeat;
   background-size: cover;
 }
+
+/* ---------- packs: upload / preview / export ---------- */
+
+.pack-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pack-progress__track {
+  height: 8px;
+  overflow: hidden;
+  background: var(--monet-surface-container-high);
+  border-radius: 999px;
+}
+
+.pack-progress__bar {
+  height: 100%;
+  background: var(--monet-primary-container);
+  border-radius: 999px;
+  transition: width 160ms ease;
+}
+
+.pack-progress__bar.is-indeterminate {
+  width: 35%;
+  animation: pack-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes pack-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.pack-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.pack-preview__heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pack-preview__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.pack-preview__row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 12px;
+}
+
+.pack-preview__row dt {
+  color: var(--color-text-muted);
+}
+
+.pack-preview__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pack-warning {
+  padding: 10px 12px;
+  color: var(--monet-on-error-container);
+  background: var(--monet-error-container);
+  border-radius: var(--radius);
+}
+
+.pack-warning__title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pack-warning ul {
+  padding-left: 18px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.choice-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pack-export-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--color-border);
+}

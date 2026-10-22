@@ -213,4 +213,49 @@ public final class ApiDtos {
             background = background == null ? "" : background;
         }
     }
+
+    // ---------------------------------------------------------------- 整合包（M3 增量）
+
+    /** POST /api/packs/preview：桌面版 describe 字段（不含归档路径等服务器内部信息）。 */
+    public record PackPreviewDto(String previewId, String name, String format, String version,
+                                 String dshVersion, List<String> profiles, long unpackedBytes,
+                                 List<String> warnings) {
+        public PackPreviewDto {
+            previewId = previewId == null ? "" : previewId;
+            name = name == null ? "" : name;
+            format = format == null ? "" : format;
+            version = version == null ? "" : version;
+            dshVersion = dshVersion == null ? "" : dshVersion;
+            profiles = profiles == null ? List.of() : List.copyOf(profiles);
+            warnings = warnings == null ? List.of() : List.copyOf(warnings);
+        }
+    }
+
+    /** POST /api/packs/import；version 留空时按“请求版本 > 包声明 > 已装兼容 > 已装最新”解析。 */
+    public record PackImportRequest(String previewId, String name, String version) {
+    }
+
+    /** POST /api/packs/export；mode=profile|home。 */
+    public record PackExportRequest(String instanceId, String mode) {
+    }
+
+    /** EXPORT_PACK 任务成功结果；artifactId 用于 GET /api/artifacts/{id} 下载。 */
+    public record PackExportResultDto(String artifactId, String filename, long size) {
+        public PackExportResultDto {
+            artifactId = artifactId == null ? "" : artifactId;
+            filename = filename == null ? "" : filename;
+        }
+    }
+
+    /** POST /api/instances/{id}/copy。 */
+    public record CopyInstanceRequest(String name) {
+    }
+
+    /** IMPORT_PACK / COPY_INSTANCE 任务成功结果。 */
+    public record PackImportResultDto(String instanceId, String name) {
+        public PackImportResultDto {
+            instanceId = instanceId == null ? "" : instanceId;
+            name = name == null ? "" : name;
+        }
+    }
 }

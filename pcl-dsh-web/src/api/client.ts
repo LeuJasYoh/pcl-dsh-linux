@@ -86,18 +86,57 @@ function defaultMessage(status: number, code: string): string {
   }
 }
 
+export interface DetailedResponse<T> {
+  status: number
+  payload: T
+}
+
+export interface UploadOptions {
+  signal?: AbortSignal
+  /** Upload progress in percent, or null when the browser cannot compute it. */
+  onProgress?: (percent: number | null) => void
+}
+
+function buildApiError(status: number, payload: unknown, path: string): ApiError {
+  const errorBody = isRecord(payload) ? (payload as ApiErrorBody) : null
+  // A plain-text 5xx usually comes from the reverse proxy / Vite dev proxy
+  // because the Spring service is not reachable; report it as unreachable.
+  const gatewayFailure = status >= 500 && !isRecord(payload)
+  const effectiveStatus = gatewayFailure ? 503 : status
+  const code = gatewayFailure
+    ? 'BAD_GATEWAY'
+    : typeof errorBody?.code === 'string' && errorBody.code
+      ? errorBody.code
+      : codeForStatus(status)
+  const message = gatewayFailure
+    ? '无法连接后端服务，请确认 PCL-DSH-Linux 服务已在本机 8080 端口启动。'
+    : typeof errorBody?.message === 'string' && errorBody.message.trim()
+      ? errorBody.message
+      : defaultMessage(effectiveStatus, code)
+  const traceId = typeof errorBody?.traceId === 'string' ? errorBody.traceId : null
+  const error = new ApiError(effectiveStatus, code, message, errorBody?.details ?? null, traceId)
+  if (effectiveStatus === 401 && path !== '/api/auth/login') unauthorizedHandler?.()
+  return error
+}
+
+function networkError(): ApiError {
+  return new ApiError(0, 'NETWORK_ERROR', '无法连接后端服务，请确认 PCL-DSH-Linux 服务已在本机 8080 端口启动。')
+}
+
 /**
  * Typed fetch wrapper shared by every API call.
  * - credentials: include, so the JSESSIONID cookie follows the SPA.
  * - Non-GET requests echo the XSRF-TOKEN cookie in X-XSRF-TOKEN (plan 4.4).
  * - A 401 (except from the login request itself) triggers the global handler.
+ * - {@link requestDetailed} additionally exposes the HTTP status so callers can tell
+ *   200 (synchronous resource) from 202 (background Job) on the same endpoint.
  */
-export async function request<T>(
+export async function requestDetailed<T>(
   method: HttpMethod,
   path: string,
   body?: unknown,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<DetailedResponse<T>> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const formData = options.formData
   // fetch sets the multipart boundary itself; never set Content-Type for FormData.
@@ -118,14 +157,12 @@ export async function request<T>(
     })
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause
-    throw new ApiError(
-      0,
-      'NETWORK_ERROR',
-      '无法连接后端服务，请确认 PCL-DSH-Linux 服务已在本机 8080 端口启动。',
-    )
+    throw networkError()
   }
 
-  if (response.status === 204 || response.status === 205) return undefined as T
+  if (response.status === 204 || response.status === 205) {
+    return { status: response.status, payload: undefined as T }
+  }
 
   const contentType = response.headers.get('content-type') ?? ''
   let payload: unknown = null
@@ -140,27 +177,88 @@ export async function request<T>(
     payload = text || null
   }
 
-  if (!response.ok) {
-    const errorBody = isRecord(payload) ? (payload as ApiErrorBody) : null
-    // A plain-text 5xx usually comes from the reverse proxy / Vite dev proxy
-    // because the Spring service is not reachable; report it as unreachable.
-    const gatewayFailure = response.status >= 500 && !isRecord(payload)
-    const status = gatewayFailure ? 503 : response.status
-    const code = gatewayFailure
-      ? 'BAD_GATEWAY'
-      : typeof errorBody?.code === 'string' && errorBody.code
-        ? errorBody.code
-        : codeForStatus(response.status)
-    const message = gatewayFailure
-      ? '无法连接后端服务，请确认 PCL-DSH-Linux 服务已在本机 8080 端口启动。'
-      : typeof errorBody?.message === 'string' && errorBody.message.trim()
-        ? errorBody.message
-        : defaultMessage(status, code)
-    const traceId = typeof errorBody?.traceId === 'string' ? errorBody.traceId : null
-    const error = new ApiError(status, code, message, errorBody?.details ?? null, traceId)
-    if (status === 401 && path !== '/api/auth/login') unauthorizedHandler?.()
-    throw error
-  }
+  if (!response.ok) throw buildApiError(response.status, payload, path)
+  return { status: response.status, payload: payload as T }
+}
 
-  return payload as T
+export async function request<T>(
+  method: HttpMethod,
+  path: string,
+  body?: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
+  return (await requestDetailed<T>(method, path, body, options)).payload
+}
+
+/**
+ * Multipart upload through XMLHttpRequest so large pack previews get a real
+ * progress percentage (fetch cannot report upload progress). Shares the same
+ * CSRF header, credentials, error mapping and 401 handling as request().
+ */
+export function uploadForm<T>(path: string, file: File, options: UploadOptions = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', path, true)
+    xhr.withCredentials = true
+    xhr.responseType = 'text'
+    xhr.setRequestHeader('Accept', 'application/json')
+    const token = readCookie(CSRF_COOKIE)
+    if (token) xhr.setRequestHeader(CSRF_HEADER, token)
+
+    let aborted = false
+    const onAbort = (): void => {
+      aborted = true
+      xhr.abort()
+    }
+    if (options.signal) {
+      if (options.signal.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'))
+        return
+      }
+      options.signal.addEventListener('abort', onAbort, { once: true })
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!options.onProgress) return
+      options.onProgress(event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : null)
+    }
+    xhr.onerror = () => {
+      options.signal?.removeEventListener('abort', onAbort)
+      reject(networkError())
+    }
+    xhr.onabort = () => {
+      options.signal?.removeEventListener('abort', onAbort)
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    xhr.onload = () => {
+      options.signal?.removeEventListener('abort', onAbort)
+      const contentType = xhr.getResponseHeader('content-type') ?? ''
+      let payload: unknown = null
+      if (xhr.responseText) {
+        if (contentType.includes('application/json')) {
+          try {
+            payload = JSON.parse(xhr.responseText)
+          } catch {
+            payload = null
+          }
+        } else {
+          payload = xhr.responseText
+        }
+      }
+      if (xhr.status === 204 || xhr.status === 205) {
+        resolve(undefined as T)
+        return
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(buildApiError(xhr.status, payload, path))
+        return
+      }
+      resolve(payload as T)
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    if (aborted) return
+    xhr.send(formData)
+  })
 }

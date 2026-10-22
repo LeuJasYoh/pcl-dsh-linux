@@ -73,6 +73,17 @@ export function elapsedText(startedAt: number | null, now: number): string {
   return '已用时 ' + body
 }
 
+/** Human-readable byte size, e.g. "12.3 MiB" (binary units, as in the desktop pack preview). */
+export function formatBytes(bytes: number): string {
+  const value = Number.isFinite(bytes) ? Math.max(0, bytes) : 0
+  if (value < 1024) return String(Math.round(value)) + ' B'
+  const kib = value / 1024
+  if (kib < 1024) return kib.toFixed(1) + ' KiB'
+  const mib = kib / 1024
+  if (mib < 1024) return mib.toFixed(1) + ' MiB'
+  return (mib / 1024).toFixed(2) + ' GiB'
+}
+
 /** Only allow same-site absolute paths as post-login redirect targets. */
 export function safeRedirect(value: unknown): string | null {
   if (typeof value !== 'string') return null

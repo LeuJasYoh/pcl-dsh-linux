@@ -228,3 +228,48 @@ export interface PluginDetails {
 export interface BackgroundAsset {
   background: string
 }
+
+/* ------------------------------------------------------------------ */
+/* Fourth increment (M3): pack preview / import / export / artifacts   */
+/* ------------------------------------------------------------------ */
+
+/** POST /api/packs/preview response (multipart field "file", 200, previewId TTL 30min). */
+export interface PackPreview {
+  previewId: string
+  name: string
+  format: string
+  version: string
+  /** Harness version declared by the pack; empty when not declared. */
+  dshVersion: string
+  profiles: string[]
+  unpackedBytes: number
+  warnings: string[]
+}
+
+/** POST /api/packs/import body → 202 Job (type=IMPORT_PACK, result {instanceId,name}). */
+export interface ImportPackInput {
+  previewId: string
+  name?: string
+  /** Exact Harness version; empty means "use the pack/installed resolution order". */
+  version?: string
+}
+
+export type PackExportMode = 'profile' | 'home'
+
+/** POST /api/packs/export body → 202 Job (type=EXPORT_PACK, result {artifactId,filename,size}). */
+export interface ExportPackInput {
+  instanceId: string
+  mode: PackExportMode
+}
+
+export interface ArtifactRef {
+  artifactId: string
+  filename: string
+  size: number
+}
+
+/** PUT /api/instances/{id}: 200 returns the updated Instance, 202 returns a Job. */
+export interface InstanceSaveResult {
+  instance: InstanceSummary | null
+  job: JobView | null
+}
