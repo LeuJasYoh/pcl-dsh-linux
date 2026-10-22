@@ -60,3 +60,13 @@
 - 截图：.build-tools/proxy-browser.png（本地临时，不入库）。
 
 结论：**HTTP/静态资源/token 引导/Cookie/WebSocket 反代均已在真实 DSH 上跑通**，满足“浏览器远程访问工作台”的核心目标。Nginx 生产链路（静态直出 + /api + /workbench + SSE/WS）将在 M4 服务器验收中复测。
+
+## 7. Nginx + 静态资源 + 反代 生产链路验证（补充，2026-10-22）
+
+在 WSL 内按发布形态搭建：Nginx(80) + 静态前端 + Spring Boot(127.0.0.1:8080) + DSH 实例，再用 Windows Playwright 验证：
+
+- 修复两处问题后通过：
+  1. Nginx 静态资源正则 location 会抢先匹配 /workbench/.../assets/*.js；把 /api 与 /workbench 改为 **^~ 前缀**，避免被静态正则拦截。
+  2. WebSocket 同源校验：Nginx 的 $host 不含默认端口（Host 头无端口，Spring 解析为 0），Origin 默认 80 端口；按 Origin 端口归一化后通过。
+- 验证结果：登录 → 首页 → 启动实例 → 打开 /workbench/{id}/，工作台完整渲染（预览版说明/侧栏/输入区），静态资源与插件模块全部 200，WebSocket ws://<host>/workbench/{id}/api/remote.mux 成功建立；仅剩 1 条登录前 /api/state 401 的无害控制台噪音（前端可在未登录时暂停轮询，列为小优化）。
+- 结论：发布形态的 Nginx 配置与反代链路具备可用性；正式服务器 M4 仍需按 install.sh 复测（系统用户/systemd/权限/安全组）。

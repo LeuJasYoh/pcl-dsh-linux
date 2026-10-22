@@ -113,7 +113,9 @@ public class WorkbenchHandshakeInterceptor implements HandshakeInterceptor {
             }
             int originPort = uri.getPort() >= 0 ? uri.getPort()
                     : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
-            return uri.getHost().equalsIgnoreCase(host.getHostString()) && originPort == host.getPort();
+            // Nginx 的 $host 不带默认端口（80/443），Host 头解析出的端口为 -1；按来源 scheme 归一化。
+            int hostPort = host.getPort() > 0 ? host.getPort() : originPort;
+            return uri.getHost().equalsIgnoreCase(host.getHostString()) && originPort == hostPort;
         } catch (IllegalArgumentException failure) {
             return false;
         }
