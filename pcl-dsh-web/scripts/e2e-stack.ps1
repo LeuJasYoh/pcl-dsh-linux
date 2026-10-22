@@ -81,6 +81,28 @@ function Wait-Http([string]$Url, [int]$TimeoutSeconds) {
     return $false
 }
 
+function Wait-ProcessHttp([int]$ProcessId, [string]$Url, [int]$TimeoutSeconds) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-ProcessAlive $ProcessId)) { return 'exited' }
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 3 -ErrorAction Stop
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) { return 'ready' }
+        } catch {
+            # Not ready yet.
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return 'timeout'
+}
+
+function Read-LogTail([string]$LogPath, [int]$Lines = 25) {
+    if (Test-Path $LogPath) {
+        return ((Get-Content $LogPath -Tail $Lines) -join [Environment]::NewLine)
+    }
+    return ''
+}
+
 function Get-PortOwners([int[]]$Ports) {
     try {
         return @(Get-NetTCPConnection -State Listen -LocalPort $Ports -ErrorAction SilentlyContinue |
@@ -131,32 +153,42 @@ function Start-Stack {
     Write-Output "Starting backend (temporary data: $DataDir)..."
     $serverArgs = @("-Dpcl.data=$DataDir", '-jar', $Jar)
     $server = Start-Process -FilePath $java -ArgumentList $serverArgs -WorkingDirectory $RepoRoot -RedirectStandardOutput $ServerOut -RedirectStandardError $ServerErr -PassThru -WindowStyle Hidden
-    if (-not (Wait-Http $HealthUrl 120)) {
+    $newline = [Environment]::NewLine
+    $backendState = Wait-ProcessHttp $server.Id $HealthUrl 120
+    if ($backendState -ne 'ready') {
         Stop-ProcessTree $server.Id
-        $tail = if (Test-Path $ServerErr) { (Get-Content $ServerErr -Tail 25) -join [Environment]::NewLine } else { '' }
-        $newline = [Environment]::NewLine
-        throw "Backend did not become ready at $HealthUrl.$newline$tail"
+        $tail = (Read-LogTail $ServerErr) + $newline + (Read-LogTail $ServerOut)
+        throw "Backend failed to start ($backendState; port $ServerPort may already be used by another service).$newline$tail"
     }
-    Write-Output "Backend ready: $HealthUrl"
 
-    $initial = ''
+    # A fresh data dir must produce initial-password. Wait for it while watching our
+    # own process: a foreign service can otherwise answer /api/health first.
     $initialFile = Join-Path $DataDir 'initial-password'
-    if (Test-Path $initialFile) {
-        $initial = (Get-Content $initialFile -Raw).Trim()
-        Set-Content -Path $InitialPasswordCopy -Value $initial -NoNewline
+    $initialDeadline = (Get-Date).AddSeconds(30)
+    while (-not (Test-Path $initialFile) -and (Get-Date) -lt $initialDeadline) {
+        if (-not (Test-ProcessAlive $server.Id)) { break }
+        Start-Sleep -Milliseconds 250
     }
+    if (-not (Test-Path $initialFile)) {
+        Stop-ProcessTree $server.Id
+        $tail = (Read-LogTail $ServerErr) + $newline + (Read-LogTail $ServerOut)
+        throw "initial-password was not generated in $DataDir. Another service may be answering on port $ServerPort; stop it and retry.$newline$tail"
+    }
+    Write-Output "Backend ready: $HealthUrl (pid $($server.Id))"
+    $initial = (Get-Content $initialFile -Raw).Trim()
+    Set-Content -Path $InitialPasswordCopy -Value $initial -NoNewline
 
     Write-Output 'Starting Vite dev server...'
     $viteArgs = @($viteBin)
     $vite = Start-Process -FilePath $node -ArgumentList $viteArgs -WorkingDirectory $WebRoot -RedirectStandardOutput $ViteOut -RedirectStandardError $ViteErr -PassThru -WindowStyle Hidden
-    if (-not (Wait-Http $WebUrl 90)) {
+    $viteState = Wait-ProcessHttp $vite.Id $WebUrl 90
+    if ($viteState -ne 'ready') {
         Stop-ProcessTree $vite.Id
         Stop-ProcessTree $server.Id
-        $tail = if (Test-Path $ViteErr) { (Get-Content $ViteErr -Tail 25) -join [Environment]::NewLine } else { '' }
-        $newline = [Environment]::NewLine
-        throw "Vite did not become ready at $WebUrl.$newline$tail"
+        $tail = (Read-LogTail $ViteErr) + $newline + (Read-LogTail $ViteOut)
+        throw "Vite failed to start ($viteState; port $WebPort may already be used by another service).$newline$tail"
     }
-    Write-Output "Vite ready: $WebUrl"
+    Write-Output "Vite ready: $WebUrl (pid $($vite.Id))"
 
     $state = [ordered]@{
         serverPid = [int]$server.Id

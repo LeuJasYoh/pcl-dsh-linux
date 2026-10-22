@@ -4,3 +4,5 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+# live-workbench.cjs screenshots are temporary artifacts
+live-workbench*.png

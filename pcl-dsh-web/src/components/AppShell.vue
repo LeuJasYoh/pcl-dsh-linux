@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 
+import { useAuthStore } from '@/stores/auth'
 import { useJobStore } from '@/stores/jobs'
 import { useNotifyStore } from '@/stores/notify'
 import { POLL_BUSY_MS, POLL_IDLE_MS, useAppStateStore } from '@/stores/state'
@@ -11,8 +12,10 @@ import PageHeader from './PageHeader.vue'
 import SideNav from './SideNav.vue'
 
 const appState = useAppStateStore()
+const auth = useAuthStore()
 const jobs = useJobStore()
 const notify = useNotifyStore()
+let restoredJob = false
 
 const backdropStyle = computed(() => {
   const background = appState.settings.background
@@ -21,6 +24,25 @@ const backdropStyle = computed(() => {
     backgroundPosition: backgroundPosition(background),
   }
 })
+
+// Polling only exists for authenticated sessions: the login page (or the brief
+// pre-seed render before the router guard resolves) must not hit /api/state.
+watch(
+  () => auth.authenticated,
+  (authenticated) => {
+    if (!authenticated) {
+      appState.stopPolling()
+      return
+    }
+    appState.startPolling()
+    if (!restoredJob) {
+      restoredJob = true
+      // A page refresh during a long task restores the SSE subscription.
+      void jobs.restore()
+    }
+  },
+  { immediate: true },
+)
 
 // Plan 5.3: idle polling is 1.5s; while a background task runs it degrades to 3s
 // because SSE is the source of truth for the task itself.
@@ -51,9 +73,8 @@ watch(
 )
 
 onMounted(() => {
-  appState.startPolling()
-  // A page refresh during a long task restores the SSE subscription from localStorage.
-  void jobs.restore()
+  // The auth watcher above starts polling once the session is confirmed.
+  if (auth.authenticated) appState.startPolling()
 })
 
 onBeforeUnmount(() => {

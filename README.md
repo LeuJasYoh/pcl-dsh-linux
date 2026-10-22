@@ -9,7 +9,12 @@ PCL-DSH-Linux 是 [HDSL](https://github.com/jiefing/HDSL) 桌面版的 Linux Web
 
 ## 当前状态
 
-M1 起步阶段：Maven 多模块骨架、core 业务代码迁移（含 104 项回归测试）、Server 首个可运行增量（密码登录/强制改密/会话与 CSRF/Job+SSE/基础 REST）、Vue 前端外壳（登录页/首页/实例页骨架/设置页）均已完成；Web 层与前端交互仍在持续开发。方案见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)，M0 服务器 PoC 手册见 [docs/M0_POC_RUNBOOK.md](docs/M0_POC_RUNBOOK.md)。
+项目主体功能已实现并在 WSL Linux 上完成端到端验证：
+
+- 后端（pcl-dsh-server）：密码登录/强制改密/会话+CSRF/审计、实例 CRUD/启动停止/复制/改版本、运行时安装探测删除、账户 CRUD 与启动注入、插件与插件目录、整合包上传预览/导入/导出、背景资源、Job+SSE、DSH 工作台反向代理（HTTP/SSE/WebSocket）；**core 104 + server 77 测试全部通过**。
+- 前端（pcl-dsh-web）：登录、首页、实例、运行时/插件目录、账户、插件、整合包、任务日志、设置/关于等页面；Playwright E2E **11 用例通过**。
+- 发布链（packaging/scripts）：可生成自包含 Linux 发布包（jar + static + Node 24.21.0 + pnpm 10.34.0 + systemd/Nginx/安装脚本 + 源码包）；在 WSL Ubuntu 上验证了 install.sh/systemd/Nginx/静态资源/工作台反代/WS/SSE/重复安装，详见 docs/DEPLOYMENT_VALIDATION.md 与 docs/M0_RESULTS.md。
+- 待完成：在阿里云服务器执行正式部署验收（需要你按 docs/M0_POC_RUNBOOK.md 或发布包内 install.sh 操作），以及真实整合包导入、账户注入等服务器侧验收。
 
 ## 当前进度（2026-10-22）
 

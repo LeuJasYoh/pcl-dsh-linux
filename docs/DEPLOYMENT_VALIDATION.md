@@ -42,3 +42,15 @@
 - 真实用户数据目录、升级/回滚/备份恢复演练。
 - SSH 加固、fail2ban、安全头等加固项。
 - 真实整合包导入与账户绑定注入（需要真实 DSH 运行时与凭据/模拟服务）。
+
+## 6. 来源 IP 与反代头（安全）
+
+- 后端 ClientIp 仅在 remoteAddr 为回环时信任 X-Forwarded-For（只影响限流/审计归属）。
+- Nginx 模板已改为 **覆盖式** `X-Forwarded-For $remote_addr`（而非追加），避免客户端伪造 XFF 左侧值；生产部署使用本模板即可。
+
+## 7. 已完成的额外验证（2026-10-22）
+
+- **重复安装幂等**：同一版本再次执行 install.sh，服务重启、data/config/launcher-v2.json SHA-256 前后一致，数据不丢。
+- **SSE 经 Nginx**：登录后启动实例，连接 /api/jobs/{id}/events 立即收到 state/log 事件（未被 Nginx 缓冲），任务最终 SUCCEEDED。
+- **来源 IP 头**：Nginx 模板改为覆盖式 X-Forwarded-For（$remote_addr），避免客户端伪造；后端 ClientIp 仅在回环代理时信任该头。
+- **自动化测试现状**：core 104 + server 77 + 前端 Playwright E2E 11 全部通过；npm run build 通过。

@@ -25,13 +25,17 @@ import java.util.TreeSet;
 
 /**
  * 把 pcl-dsh-core 的业务对象组装成 REST DTO（方案 §4.9）。
- * 只做只读聚合，不重复实现业务逻辑；账户读取失败时 accounts 返回 null 而不是伪造空列表。
+ * 只做只读聚合，不重复实现业务逻辑；账户资料损坏时 accounts 返回空列表并在 warnings
+ * 中给出中文提示，保证 GET /api/state 不返回 500、也不泄漏文件路径。
  */
 @Component
 public class StateAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(StateAssembler.class);
     private static final String DEFAULT_REGISTRY = "https://registry.npmjs.org";
+    /** 供 /api/state warnings 与前端提示使用；不含文件路径等内部细节。 */
+    public static final String ACCOUNTS_WARNING =
+            "账户资料无法读取，账户列表已暂时置空；请检查 data/config/accounts.json 或重新保存 API Key。";
 
     private final InstanceStore store;
     private final ProcessService processes;
@@ -63,15 +67,18 @@ public class StateAssembler {
             runtimeDtos = List.of();
         }
         List<ApiDtos.AccountDto> accountDtos;
+        List<String> warnings = new ArrayList<>();
         try {
             accountDtos = accountList();
         } catch (IOException | RuntimeException e) {
-            log.warn("读取账户列表失败：{}", e.toString());
-            accountDtos = null;
+            log.warn("读取账户列表失败，按空列表降级：{}", e.toString());
+            accountDtos = List.of();
+            warnings.add(ACCOUNTS_WARNING);
         }
         JobManager.GlobalStatus status = jobs.globalStatus();
         return new ApiDtos.StateDto(properties.getVersion(), store.selected(), instances, runtimeDtos,
-                accountDtos, new ApiDtos.StatusDto(status.code(), status.message()), settings(), List.of());
+                accountDtos, new ApiDtos.StatusDto(status.code(), status.message()), settings(),
+                List.of(), warnings);
     }
 
     public List<ApiDtos.InstanceDto> instances() {

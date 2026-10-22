@@ -3,6 +3,7 @@ package com.hdsl.server.pack;
 import com.hdsl.pack.PackInspection;
 import com.hdsl.server.api.ApiException;
 import com.hdsl.server.config.DataRoot;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -15,12 +16,13 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 /**
  * 整合包上传预览登记（方案 §4.7）：内存表 + 上传文件 + SHA-256 + 已校验的 PackInspection。
  *
  * <ul>
- *   <li>TTL 30 分钟，过期后删除登记与上传文件（懒清理）；</li>
+ *   <li>TTL 30 分钟；启动时清理上次进程遗留的上传文件，运行期由定时任务清理过期登记；</li>
  *   <li>文件固定在 data/cache/uploads 内，删除前校验路径前缀；</li>
  *   <li>导入时用 previewId 复用，无需重复上传；导入前会重新核对 SHA-256 防换包。</li>
  * </ul>
@@ -36,6 +38,37 @@ public class PreviewStore {
 
     public PreviewStore(DataRoot data) {
         this.data = data;
+    }
+
+    /**
+     * 启动清理：预览登记只在内存中，重启后之前的上传文件永远无法再被引用，
+     * 因此直接清空 data/cache/uploads 下的遗留文件（只删除本目录普通文件）。
+     */
+    @PostConstruct
+    public synchronized void initialize() {
+        Path directory = uploads();
+        try {
+            Files.createDirectories(directory);
+        } catch (IOException failure) {
+            log.warn("预览上传目录不可用：{}", failure.toString());
+            return;
+        }
+        int removed = 0;
+        try (Stream<Path> files = Files.list(directory)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                try {
+                    Files.deleteIfExists(file);
+                    removed++;
+                } catch (IOException failure) {
+                    log.warn("遗留预览文件清理失败：{}", failure.toString());
+                }
+            }
+        } catch (IOException failure) {
+            log.warn("遗留预览文件清理失败：{}", failure.toString());
+        }
+        if (removed > 0) {
+            log.info("已清理 {} 个上次运行遗留的整合包上传文件。", removed);
+        }
     }
 
     public record Preview(String id, Path archive, String sha256, PackInspection inspection,
@@ -66,7 +99,7 @@ public class PreviewStore {
         if (id == null || id.isBlank()) {
             return null;
         }
-        sweep();
+        sweepExpired();
         Preview preview = previews.get(id.trim());
         if (preview == null) {
             return null;
@@ -91,8 +124,10 @@ public class PreviewStore {
         return data.cache().resolve("uploads").toAbsolutePath().normalize();
     }
 
-    private void sweep() {
+    /** 清理过期登记与上传文件，返回清理条数；供启动与定时任务调用。 */
+    public synchronized int sweepExpired() {
         long now = System.currentTimeMillis();
+        int removed = 0;
         for (Map.Entry<String, Preview> entry : previews.entrySet()) {
             Preview preview = entry.getValue();
             if (now - preview.createdAt() <= TTL.toMillis()) {
@@ -100,8 +135,13 @@ public class PreviewStore {
             }
             if (previews.remove(entry.getKey(), preview)) {
                 deleteQuietly(preview.archive());
+                removed++;
             }
         }
+        if (removed > 0) {
+            log.info("已清理 {} 个过期的整合包预览。", removed);
+        }
+        return removed;
     }
 
     private void deleteQuietly(Path archive) {

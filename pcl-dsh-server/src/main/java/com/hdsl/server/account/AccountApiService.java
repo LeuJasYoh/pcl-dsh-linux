@@ -29,6 +29,23 @@ import java.util.List;
 public class AccountApiService {
 
     private static final Logger log = LoggerFactory.getLogger(AccountApiService.class);
+    /** 账户损坏降级审计限频：避免 /api/state 轮询导致审计日志刷屏。 */
+    private static final long DEGRADED_AUDIT_INTERVAL_MILLIS = 5 * 60_000L;
+    public static final String DEGRADED_WARNING = "ACCOUNTS_UNREADABLE";
+
+    private volatile long lastDegradedAuditAt;
+
+    /** 账户列表结果：账户资料损坏时返回空列表 + 中文警告，而不是 500。 */
+    public record AccountList(List<ApiDtos.AccountDto> accounts, String warning) {
+        public AccountList {
+            accounts = accounts == null ? List.of() : List.copyOf(accounts);
+            warning = warning == null ? "" : warning;
+        }
+
+        public boolean degraded() {
+            return !warning.isEmpty();
+        }
+    }
 
     private final AccountService accounts;
     private final InstanceStore store;
@@ -53,13 +70,25 @@ public class AccountApiService {
                 .toList();
     }
 
-    public List<ApiDtos.AccountDto> list() {
+    public AccountList list(String ip) {
         try {
-            return state.accountList();
-        } catch (IOException failure) {
-            log.warn("读取账户列表失败：{}", failure.toString());
-            throw ApiException.internal("读取账户列表失败，请检查数据目录权限与账户资料完整性。");
+            return new AccountList(state.accountList(), "");
+        } catch (IOException | RuntimeException failure) {
+            log.warn("读取账户列表失败，按空列表降级：{}", failure.toString());
+            recordDegradedAudit(ip);
+            return new AccountList(List.of(), StateAssembler.ACCOUNTS_WARNING);
         }
+    }
+
+    /** 降级审计：最多每 5 分钟记录一次，避免轮询刷日志；不记录异常原文/文件路径。 */
+    private void recordDegradedAudit(String ip) {
+        long now = System.currentTimeMillis();
+        if (now - lastDegradedAuditAt < DEGRADED_AUDIT_INTERVAL_MILLIS) {
+            return;
+        }
+        lastDegradedAuditAt = now;
+        audit.record("ACCOUNTS_DEGRADED", ip, "账户资料无法读取，接口已按空列表降级，需重新保存 API Key");
+        logs.append("账户资料无法读取，已按空列表降级并记录审计。");
     }
 
     public ApiDtos.AccountDto create(ApiDtos.AccountSaveRequest request, String ip) {

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 
 import { stateApi } from '@/api'
 import { ApiError } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import type {
   AccountSummary,
   AppSettings,
@@ -84,6 +85,9 @@ export const useAppStateStore = defineStore('appState', () => {
   }
 
   async function refresh(): Promise<void> {
+    // Never poll protected endpoints while unauthenticated: the login page and the
+    // post-401 redirect must not produce /api/state 401 noise.
+    if (!useAuthStore().authenticated) return
     if (inFlight) return
     inFlight = true
     if (lastUpdatedAt.value === null) loading.value = true
@@ -104,6 +108,10 @@ export const useAppStateStore = defineStore('appState', () => {
 
   function scheduleNext(delay: number): void {
     if (!running || document.hidden) return
+    if (!useAuthStore().authenticated) {
+      stopPolling()
+      return
+    }
     timer = window.setTimeout(async () => {
       timer = null
       await refresh()
@@ -125,6 +133,7 @@ export const useAppStateStore = defineStore('appState', () => {
 
   function startPolling(): void {
     if (running) return
+    if (!useAuthStore().authenticated) return
     running = true
     document.addEventListener('visibilitychange', onVisibilityChange)
     void refresh().finally(() => scheduleNext(POLL_IDLE_MS))

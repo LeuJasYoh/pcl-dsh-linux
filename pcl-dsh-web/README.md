@@ -30,6 +30,8 @@ npm run e2e:report             # 打开 HTML 报告（playwright-report/）
 
 前置条件：JDK 21（`JAVA_HOME` 或 `D:/DevelopSoftware/Java/JDK-21`）与已构建的
 `pcl-dsh-server/target/pcl-dsh-linux.jar`（`scripts/mvn.ps1 -B -ntp package`）。
+E2E 会占用 **8080（后端）与 5173（Vite）**，运行前请停止本机/WSL/其他部署占用这两个端口的服务
+（否则临时后端可能启动失败或连到错误的服务；`scripts/e2e-stack.ps1 start` 会做进程级就绪检查并给出日志）。
 
 需要手工控制服务或调试时：
 
@@ -59,6 +61,36 @@ $env:E2E_EXTERNAL_STACK=1; npm run e2e     # 复用已启动的 stack，测试�
 > 注：`.e2e-data` 位于工程目录内，`vite.config.ts` 的 `server.watch.ignored` 已排除它
 > （Windows 上 Vite 的文件监视句柄会让后端“移入回收目录”的 rename 失败）。
 
+## 真实工作台联调（可选，不纳入 CI）
+
+`scripts/live-workbench.cjs` 用 Playwright 驱动真实后端做一次端到端工作台冒烟：
+登录 → 选择实例 → 未运行时 launch 并轮询 Job → 等待“运行中” → 打开 `/workbench/{id}/`
+→ 等待 DSH 外壳 → 收集 WebSocket/console/pageerror → 截图 → 停止实例；失败时输出中文原因与失败截图。
+
+前置：后端已构建并运行（含 `/workbench` 反代）、该实例能真正启动 DSH 运行时（Node/pnpm 可用、网络可达）、
+已执行过 `npm run e2e:install`（Chromium）。
+
+```powershell
+# 可选：用临时数据目录启动真实后端（与 E2E 相同的 stack；也可连自己的部署）
+pwsh -File scripts/e2e-stack.ps1 start
+
+$env:BASE_URL="http://127.0.0.1"        # 默认值
+$env:ADMIN_PASSWORD="你的管理员密码"     # 必填；初始密码见 data/initial-password
+# $env:NEW_PASSWORD="新密码"            # 仅当首次登录还需强制改密时
+# $env:INSTANCE_ID="i-..."              # 可选，默认当前实例或第一个
+# $env:SCREENSHOT_PATH="test-results/live-workbench.png"
+node scripts/live-workbench.cjs
+
+pwsh -File scripts/e2e-stack.ps1 stop   # 如使用临时 stack
+```
+
+其他可选环境变量：`SESSION_STATE`（复用已登录的 Playwright storageState）、`KEEP_RUNNING=1`（保留实例运行）、
+`HEADED=1`（显示浏览器）、`BROWSER_CHANNEL=msedge`/`BROWSER_EXECUTABLE`（浏览器选择）、
+`WORKBENCH_TIMEOUT_MS`/`READY_TIMEOUT_MS`/`LAUNCH_TIMEOUT_MS`（超时，默认 60s/120s/20min）。
+
+注意：联调会真实安装/启动 DSH 运行时与 Node 进程，耗时取决于网络；运行期间不要同时执行后端打包
+（Windows 下 jar 被占用会阻塞 repackage）。该脚本默认不运行，也不属于 `npm run e2e`。
+
 ## 结构
 
 ```
@@ -75,6 +107,7 @@ src/
   assets/       backgrounds/whale-01..05.webp、icons/hdsl.webp（由桌面版 PNG 转 WebP）
 e2e/            Playwright 核心验收用例、全局 setup/teardown 与 mock 辅助
 scripts/e2e-stack.ps1  一次性后端（临时数据目录）+ Vite 的启动/停止脚本
+scripts/live-workbench.cjs  真实 /workbench 联调探针（env 配置，默认不跑）
 playwright.config.ts   Chromium、单 worker、失败截图/trace、登录态项目依赖
 public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取）
 public/favicon.webp 网站图标（由 hdsl.webp 复制）

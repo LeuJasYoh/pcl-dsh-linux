@@ -51,17 +51,21 @@ public final class ApiDtos {
 
     /**
      * GET /api/state 聚合快照（方案 §4.9）。
-     * accounts 允许为 null：账户清单读取失败时前端可显示“账户不可用”，不伪造空列表。
+     *
+     * <p>账户资料损坏时 accounts 返回空列表并在 warnings 中给出可展示中文提示（不返回 500、
+     * 不泄漏文件路径）；warnings 为新增可选字段，旧前端忽略即可，保持向后兼容。</p>
      */
     public record StateDto(String version, String currentInstanceId, List<InstanceDto> instances,
                            List<RuntimeDto> runtimes, List<AccountDto> accounts, StatusDto status,
-                           SettingsDto settings, List<String> availableVersions) {
+                           SettingsDto settings, List<String> availableVersions, List<String> warnings) {
         public StateDto {
             instances = instances == null ? List.of() : List.copyOf(instances);
             runtimes = runtimes == null ? List.of() : List.copyOf(runtimes);
+            accounts = accounts == null ? List.of() : List.copyOf(accounts);
             status = status == null ? new StatusDto("READY", "就绪") : status;
             settings = settings == null ? new SettingsDto("", "https://registry.npmjs.org", "") : settings;
             availableVersions = availableVersions == null ? List.of() : List.copyOf(availableVersions);
+            warnings = warnings == null ? List.of() : List.copyOf(warnings);
         }
     }
 

@@ -35,9 +35,19 @@ public class AccountController {
         return accounts.providers();
     }
 
+    /**
+     * 账户列表。资料损坏时仍返回 200 + 空数组（不 500），并通过
+     * {@code X-PCL-Warning: ACCOUNTS_UNREADABLE} 提示前端；/api/state 的 warnings 字段
+     * 带可展示中文提示。
+     */
     @GetMapping
-    public List<ApiDtos.AccountDto> list() {
-        return accounts.list();
+    public ResponseEntity<List<ApiDtos.AccountDto>> list(HttpServletRequest request) {
+        AccountApiService.AccountList result = accounts.list(ClientIp.of(request));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
+        if (result.degraded()) {
+            builder.header("X-PCL-Warning", AccountApiService.DEGRADED_WARNING);
+        }
+        return builder.body(result.accounts());
     }
 
     @PostMapping
