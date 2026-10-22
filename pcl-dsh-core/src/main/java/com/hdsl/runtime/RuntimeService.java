@@ -26,6 +26,8 @@ public class RuntimeService {
     private static final Duration COHORT_CACHE_TTL = Duration.ofDays(30);
     private static final long PROGRESS_INTERVAL_NANOS = Duration.ofSeconds(2).toNanos();
     private final Path root;
+    private final Path extraToolRoot;
+    private final Path shimDirectory;
     private final String registry;
     private final String proxy;
     private final HttpClient http;
@@ -33,7 +35,21 @@ public class RuntimeService {
     private final Map<String, String> fingerprints = new ConcurrentHashMap<>();
 
     public RuntimeService(Path root, String registry, String proxy) {
+        this(root, registry, proxy, null, null);
+    }
+
+    /**
+     * @param extraToolRoot read-only tools directory shipped with the release package (for example /opt/pcl-dsh/tools),
+     *                      or null. It is searched before the writable data tools directory.
+     * @param shimDirectory writable directory for generated launcher shims; null keeps the historic
+     *                      {@code <data>/tools/shims} location.
+     */
+    public RuntimeService(Path root, String registry, String proxy, Path extraToolRoot, Path shimDirectory) {
         this.root = root.toAbsolutePath().normalize();
+        this.extraToolRoot = extraToolRoot == null ? null : extraToolRoot.toAbsolutePath().normalize();
+        this.shimDirectory = shimDirectory == null
+                ? this.root.resolve("tools").resolve("shims")
+                : shimDirectory.toAbsolutePath().normalize();
         this.registry = validateHttpUrl(registry == null || registry.isBlank() ? "https://registry.npmjs.org" : registry).replaceAll("/+$", "");
         this.proxy = proxy == null || proxy.isBlank() ? "" : validateHttpUrl(proxy.trim());
         HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).followRedirects(HttpClient.Redirect.NORMAL);
@@ -153,7 +169,8 @@ public class RuntimeService {
     private Path npmScript() throws IOException {
         Path nodeDir = nodeExecutable().getParent();
         List<Path> candidates = new ArrayList<>(List.of(nodeDir.resolve("node_modules/npm/bin/npm-cli.js"),
-                nodeDir.resolve("../lib/node_modules/npm/bin/npm-cli.js").normalize(), root.resolve("tools/node/node_modules/npm/bin/npm-cli.js")));
+                nodeDir.resolve("../lib/node_modules/npm/bin/npm-cli.js").normalize()));
+        for (Path tools : toolRoots()) candidates.add(tools.resolve("node/node_modules/npm/bin/npm-cli.js"));
         findOnPath(isWindows() ? "npm.cmd" : "npm").ifPresent(p -> {
             candidates.add(p.getParent().resolve("node_modules/npm/bin/npm-cli.js"));
             try { if (!isWindows()) candidates.add(p.toRealPath()); } catch (IOException ignored) { }
@@ -176,7 +193,10 @@ public class RuntimeService {
     }
 
     private List<Path> toolRoots() {
-        List<Path> paths = new ArrayList<>(List.of(root.resolve("tools")));
+        List<Path> paths = new ArrayList<>();
+        // Release-package tools are read-only and take precedence; the data root stays writable.
+        if (extraToolRoot != null) paths.add(extraToolRoot);
+        paths.add(root.resolve("tools"));
         String packaged = System.getProperty("jpackage.app-path", "");
         if (!packaged.isBlank()) {
             try {
@@ -499,7 +519,7 @@ public class RuntimeService {
         env.put("DSH_TELEMETRY_MODE", "DISABLED");
         String pathKey = env.keySet().stream().filter(k -> k.equalsIgnoreCase("PATH")).findFirst().orElse("PATH");
         String existing = env.getOrDefault(pathKey, ""); env.remove(pathKey);
-        env.put("PATH", nodeExecutable().getParent() + File.pathSeparator + root.resolve("tools/shims") + File.pathSeparator
+        env.put("PATH", nodeExecutable().getParent() + File.pathSeparator + shimDirectory + File.pathSeparator
                 + root.resolve("tools/pnpm") + File.pathSeparator + existing);
         if (!proxy.isBlank()) {
             env.put("HTTP_PROXY", proxy); env.put("HTTPS_PROXY", proxy); env.put("NPM_CONFIG_PROXY", proxy); env.put("NPM_CONFIG_HTTPS_PROXY", proxy);
@@ -537,7 +557,7 @@ public class RuntimeService {
 
     void ensurePnpmShim() throws IOException {
         Path script = pnpmScript();
-        Path shims = root.resolve("tools/shims"); Files.createDirectories(shims);
+        Path shims = shimDirectory; Files.createDirectories(shims);
         if (isWindows()) {
             // Only launcher-owned absolute file paths occur here; user package arguments are never interpolated.
             String node = nodeExecutable().toString(), cli = script.toString();
@@ -553,7 +573,7 @@ public class RuntimeService {
 
     /** Preserve native before/after reconciliation while bypassing old Windows shell forwarding. */
     Path pluginBridge() throws IOException {
-        Path bridge = root.resolve("tools/shims/hdsl-plugin-runner.mjs");
+        Path bridge = shimDirectory.resolve("hdsl-plugin-runner.mjs");
         Files.createDirectories(bridge.getParent());
         Files.writeString(bridge, """
                 import { createRequire, syncBuiltinESMExports } from 'node:module';

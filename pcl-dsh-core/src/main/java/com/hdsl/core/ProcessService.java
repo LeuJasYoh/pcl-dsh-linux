@@ -27,6 +27,13 @@ public final class ProcessService implements AutoCloseable {
     ProcessService(ExecutorService readers){this.readers=Objects.requireNonNull(readers);}
     public String status(Instance i){Process p=processes.get(i.id());if(p!=null&&p.isAlive())return states.getOrDefault(i.id(),"启动中");if(running(i.id()))return "子进程仍在运行";if(p!=null)return "已退出 ("+p.exitValue()+")";return portFree(i.port())?"未启动":"端口被占用";}
     public boolean running(String id){Process p=processes.get(id);return (p!=null&&p.isAlive())||children.getOrDefault(id,Map.of()).values().stream().anyMatch(Owned::alive);}
+    /** Ids whose launcher-created process or any tracked descendant is still alive. Sorted for stable callers. */
+    public List<String> runningIds(){
+        Set<String> ids=new TreeSet<>();
+        for(String id:processes.keySet())if(running(id))ids.add(id);
+        for(String id:children.keySet())if(running(id))ids.add(id);
+        return List.copyOf(ids);
+    }
     private void captureChildren(String id,Process p){Map<Long,Owned> tracked=children.computeIfAbsent(id,k->new ConcurrentHashMap<>());if(p.isAlive())p.descendants().forEach(h->tracked.putIfAbsent(h.pid(),new Owned(h,h.info().startInstant().orElse(null))));}
     public void start(Instance i,List<String> command,Path workspace,Map<String,String> environment,Consumer<String> log)throws IOException{
       synchronized(lifecycle){
