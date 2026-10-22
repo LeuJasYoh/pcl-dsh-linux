@@ -48,3 +48,15 @@
 - WSL 与阿里云服务器在网络/内核/防火墙上有差异；M4 仍需服务器真实验收，但关键未知项（运行时安装、token/Cookie/资源路径/WS/SSE）已消除。
 - WebSocket 转发实现后需用真实 DSH 页面验证。
 - Node 子进程内存需在正式服务器测量。
+
+## 6. 反代真实浏览器验证（补充，2026-10-22）
+
+在 WSL 后端 + Windows Vite 代理 + Windows Playwright(Chromium) 环境下，用真实 DSH 0.2.1-rc.2 完成端到端验证：
+
+- 登录 HDSL Web → 首页 → 启动实例（LAUNCH_INSTANCE 任务成功）→ 浏览器打开 /workbench/{id}/；
+- 工作台标题为 "DeepSeek Harness"，页面完整渲染（侧栏、预览版说明、输入区等），**所有静态资源与插件模块加载成功**（plugins/?? 多模块 URL 经反代 200）；
+- 建立 WebSocket：ws://127.0.0.1:5173/workbench/{id}/api/remote.mux（经 Vite → Spring Boot → DSH 转发成功）；
+- 页面无 JS 运行时异常；控制台仅 1 条资源 401（登录时序中的无害请求，待后续小修）；
+- 截图：.build-tools/proxy-browser.png（本地临时，不入库）。
+
+结论：**HTTP/静态资源/token 引导/Cookie/WebSocket 反代均已在真实 DSH 上跑通**，满足“浏览器远程访问工作台”的核心目标。Nginx 生产链路（静态直出 + /api + /workbench + SSE/WS）将在 M4 服务器验收中复测。
