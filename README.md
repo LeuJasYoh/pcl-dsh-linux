@@ -20,7 +20,9 @@ M1 起步阶段：Maven 多模块骨架、core 业务代码迁移（含 104 项�
 - 增量 2：server 实例生命周期/启动 Job、运行时安装探测删除、日志接口（core 104 + server 24 测试通过）；web 实例弹窗/启停/任务 SSE/运行时/日志/设置交互；packaging systemd 与 Nginx 模板；真实后端 API 冒烟通过（登录/改密/建实例/选择/web-url 409/删除/版本查询/日志）。
 - 增量 3：server 账户/插件/插件目录/背景资源/artifact（core 104 + server 36 测试通过）；web 账户 CRUD/插件管理/插件目录/背景上传/关于许可；真实后端联调冒烟通过（账户 CRUD 与引用 409、插件 Job、目录检索、背景上传与资源读取、artifact 404、无密钥泄漏）。
 - 发布链：scripts/package-linux.ps1 可生成 HDSL Web 发布包（jar + static + Node 24.21.0 + pnpm 10.34.0 + systemd/Nginx/安装脚本 + 源码包）；已在 WSL 验证自带 Node/pnpm 可在 Linux 运行。
-- 下一步：整合包导入导出/实例复制（开发中）、M0 服务器 PoC 结果、DSH 工作台反向代理、Playwright 验收与 WebP 资源优化。
+- 增量 4：DSH 工作台反向代理（HTTP/SSE/WebSocket、token 引导、Cookie/Location 重写、SSRF 白名单）与 Playwright E2E 11 用例；真实 DSH 浏览器验证通过（工作台完整渲染 + WS 连接）。
+- 部署链路：发布包安装脚本/systemd/Nginx 在 WSL 验证通过（安装、健康检查、登录、启动实例、工作台反代、WS），记录见 docs/DEPLOYMENT_VALIDATION.md。
+- 下一步：真实服务器 M4 验收（需你执行命令）、未登录轮询 401 噪音修复、artifact/账户降级等后端打磨、正式发布包与源码包。
 - 下一步：M0 服务器 PoC（等待执行结果）、账户/插件/目录后端、整合包与复制、前端账户/插件/整合包页面、DSH 反代。
 
 ## 工程结构
