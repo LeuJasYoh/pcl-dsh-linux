@@ -28,6 +28,8 @@ export class ApiError extends Error {
 
 export interface RequestOptions {
   signal?: AbortSignal
+  /** Multipart body (background upload); mutually exclusive with the JSON body. */
+  formData?: FormData
 }
 
 let unauthorizedHandler: (() => void) | null = null
@@ -97,8 +99,9 @@ export async function request<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  const hasBody = body !== undefined
-  if (hasBody) headers['Content-Type'] = 'application/json'
+  const formData = options.formData
+  // fetch sets the multipart boundary itself; never set Content-Type for FormData.
+  if (body !== undefined && formData === undefined) headers['Content-Type'] = 'application/json'
   if (method !== 'GET') {
     const token = readCookie(CSRF_COOKIE)
     if (token) headers[CSRF_HEADER] = token
@@ -110,7 +113,7 @@ export async function request<T>(
       method,
       headers,
       credentials: 'include',
-      body: hasBody ? JSON.stringify(body) : undefined,
+      body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
       signal: options.signal,
     })
   } catch (cause) {

@@ -1,124 +1,173 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { instancesApi } from '@/api'
+import type { InstanceInput } from '@/api/types'
 import HomeLaunchPane from '@/components/HomeLaunchPane.vue'
 import HomeTaskCard from '@/components/HomeTaskCard.vue'
+import InstanceDialog from '@/components/InstanceDialog.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
+import { useJobStore } from '@/stores/jobs'
 import { useNotifyStore } from '@/stores/notify'
 import { useAppStateStore } from '@/stores/state'
 import { resolveBackground } from '@/utils/backgrounds'
-import { isRunningStatus } from '@/utils/display'
+import { displayPort, isRunningStatus } from '@/utils/display'
 import { describeApiError } from '@/utils/errors'
 
 const router = useRouter()
 const appState = useAppStateStore()
+const jobs = useJobStore()
 const notify = useNotifyStore()
 
-const busy = ref(false)
-const taskStartedAt = ref<number | null>(null)
+const pending = ref(false)
+const dialogOpen = ref(false)
+const saving = ref(false)
+const dialogError = ref('')
 const homeMessage = ref('')
 
 const background = computed(() => 'url("' + resolveBackground(appState.settings.background) + '")')
 const current = computed(() => appState.currentInstance)
 const running = computed(() => current.value !== null && isRunningStatus(current.value.status))
+const webReady = computed(() => {
+  const status = (current.value?.status ?? '').toLowerCase()
+  return status === 'running' || status === '运行中' || status === '已启动'
+})
 const runtimeInstalled = computed(
   () =>
     current.value !== null &&
     appState.runtimes.some((item) => item.installed && item.version === current.value?.version),
 )
 const firstLaunchHint = computed(() => current.value !== null && !running.value && !runtimeInstalled.value)
-const taskVisible = computed(() => appState.taskActive || busy.value)
-const taskPhase = computed(() => {
-  if (appState.taskActive) return appState.taskPhase
-  return busy.value ? '正在提交启动任务…' : ''
-})
+const busy = computed(() => pending.value || jobs.active || saving.value)
+
+const taskVisible = computed(() => jobs.active)
+const taskPhase = computed(() => jobs.progressText)
 
 const launchLabel = computed(() => {
   if (!current.value) return '创建实例'
+  if (jobs.active && jobs.type === 'LAUNCH_INSTANCE') return '启动中…'
   if (running.value) return '打开 Web 界面'
   return runtimeInstalled.value ? '启动实例' : '下载并启动'
 })
-const launchSub = computed(() => current.value?.name ?? '')
+const launchSub = computed(() => {
+  if (!current.value) return ''
+  if (jobs.active && jobs.type === 'LAUNCH_INSTANCE') return jobs.progressText
+  return current.value.name
+})
 
-watch(
-  () => appState.taskActive,
-  (active) => {
-    if (active && taskStartedAt.value === null) taskStartedAt.value = Date.now()
-    if (!active && !busy.value) taskStartedAt.value = null
-  },
+const installedVersions = computed(() =>
+  appState.runtimes.filter((runtime) => runtime.installed).map((runtime) => runtime.version),
 )
+
+onMounted(() => {
+  void appState.refresh()
+})
 
 function goLogs(): void {
   void router.push({ name: 'logs' })
+}
+
+function openCreate(): void {
+  if (busy.value) return
+  dialogOpen.value = true
+  dialogError.value = ''
+}
+
+async function submitCreate(input: InstanceInput): Promise<void> {
+  if (saving.value) return
+  saving.value = true
+  dialogError.value = ''
+  const hadCurrent = appState.currentInstanceId !== null
+  try {
+    const created = await instancesApi.create(input)
+    if (!hadCurrent && created) {
+      // First instance: select it so the home launch button becomes usable immediately.
+      try {
+        await instancesApi.select(created.id)
+      } catch {
+        // Selection is a convenience; the instance list offers it explicitly.
+      }
+    }
+    notify.success('实例已创建。')
+    dialogOpen.value = false
+    await appState.refresh()
+  } catch (caught) {
+    dialogError.value = describeApiError(caught, '创建实例')
+  } finally {
+    saving.value = false
+  }
 }
 
 async function handleLaunch(): Promise<void> {
   if (busy.value) return
   homeMessage.value = ''
   if (!current.value) {
-    notify.info('还没有实例。创建实例接口将在后续增量提供（M2 F-5）。')
-    await router.push({ name: 'instances' })
+    openCreate()
     return
   }
   if (running.value) {
     await openWeb()
     return
   }
-  busy.value = true
-  taskStartedAt.value = Date.now()
+  pending.value = true
   try {
     const job = await instancesApi.launch(current.value.id)
-    const jobId = job.jobId ?? job.id
-    notify.success(
-      jobId
-        ? '已提交启动任务（' + jobId + '），任务详情将在后续增量接入。'
-        : '已提交启动任务，任务详情将在后续增量接入。',
-    )
+    jobs.begin(job, { instanceId: current.value.id })
+    notify.success('已提交任务：' + jobs.typeLabel + '（' + job.id + '）。')
     await appState.refresh()
   } catch (caught) {
     homeMessage.value = describeApiError(caught, '启动实例')
     notify.error(homeMessage.value)
   } finally {
-    busy.value = false
-    if (!appState.taskActive) taskStartedAt.value = null
+    pending.value = false
   }
 }
 
 async function openWeb(): Promise<void> {
   if (!current.value || busy.value) return
-  busy.value = true
+  if (!webReady.value) {
+    homeMessage.value = '网页服务尚未确认就绪，请等待启动完成或查看任务日志。'
+    notify.info(homeMessage.value)
+    return
+  }
+  pending.value = true
   homeMessage.value = ''
   try {
     const result = await instancesApi.webUrl(current.value.id)
-    const opened = result.url ? window.open(result.url, '_blank', 'noopener') : null
-    if (!opened) notify.info('浏览器阻止了新窗口，或后端没有返回工作台地址。')
+    if (!result.url) {
+      homeMessage.value = '后端没有返回 Web 界面地址。'
+      notify.error(homeMessage.value)
+      return
+    }
+    const opened = window.open(result.url, '_blank', 'noopener')
+    if (!opened) notify.info('浏览器阻止了新窗口，请允许本页弹出窗口后重试。')
   } catch (caught) {
-    homeMessage.value = describeApiError(caught, '打开工作台')
+    homeMessage.value = describeApiError(caught, '打开 Web 界面')
     notify.error(homeMessage.value)
   } finally {
-    busy.value = false
+    pending.value = false
   }
 }
 
 async function stopInstance(): Promise<void> {
   if (!current.value || busy.value) return
-  busy.value = true
+  pending.value = true
   homeMessage.value = ''
   try {
     await instancesApi.stop(current.value.id)
-    notify.success('已发送停止请求。')
+    notify.success('已停止实例。')
     await appState.refresh()
   } catch (caught) {
     homeMessage.value = describeApiError(caught, '停止实例')
     notify.error(homeMessage.value)
   } finally {
-    busy.value = false
+    pending.value = false
   }
 }
 
 async function selectInstance(id: string): Promise<void> {
-  if (id === appState.currentInstanceId) return
+  if (id === appState.currentInstanceId || busy.value) return
   try {
     await instancesApi.select(id)
     appState.setCurrentInstanceId(id)
@@ -134,8 +183,30 @@ async function selectInstance(id: string): Promise<void> {
   <div class="home-page" data-testid="page-home" :style="{ backgroundImage: background }">
     <div class="home-page__shade" aria-hidden="true"></div>
 
+    <section
+      v-if="current && !taskVisible"
+      class="card content-card home-instance-card"
+      data-testid="home-current-instance"
+    >
+      <div class="home-instance-card__heading">
+        <span class="section-title">当前实例</span>
+        <StatusBadge :status="current.status" />
+      </div>
+      <p class="home-instance-card__name" data-testid="home-instance-name">{{ current.name }}</p>
+      <p class="home-instance-card__meta" data-testid="home-instance-meta">
+        Harness {{ current.version || '—' }} · {{ current.profile }} · 端口 {{ displayPort(current) }}
+      </p>
+    </section>
+
     <div v-if="taskVisible" class="home-task-slot">
-      <HomeTaskCard :phase="taskPhase" :started-at="taskStartedAt" @view="goLogs" />
+      <HomeTaskCard
+        :phase="taskPhase"
+        :started-at="jobs.elapsedBase"
+        :type-label="jobs.typeLabel"
+        :job-id="jobs.jobId"
+        :logs-tail="jobs.logTail"
+        @view="goLogs"
+      />
     </div>
 
     <div v-if="firstLaunchHint" class="first-launch-note card content-card" data-testid="first-launch-hint">
@@ -147,6 +218,7 @@ async function selectInstance(id: string): Promise<void> {
       v-if="running"
       class="btn btn-secondary home-stop"
       type="button"
+      data-testid="home-stop"
       :disabled="busy || appState.taskActive"
       @click="stopInstance"
     >
@@ -178,7 +250,19 @@ async function selectInstance(id: string): Promise<void> {
     </div>
 
     <p v-if="!current && !appState.loading" class="first-launch-note">
-      当前工作空间还没有实例。先创建实例，再回到这里启动。
+      当前工作空间还没有实例。点击右下角“创建实例”开始。
     </p>
+
+    <InstanceDialog
+      v-if="dialogOpen"
+      mode="create"
+      :instance="null"
+      :accounts="appState.accounts"
+      :installed-versions="installedVersions"
+      :submitting="saving"
+      :submit-error="dialogError"
+      @submit="submitCreate"
+      @close="dialogOpen = false"
+    />
   </div>
 </template>

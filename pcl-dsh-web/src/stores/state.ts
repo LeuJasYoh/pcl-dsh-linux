@@ -19,7 +19,10 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 const POLL_IDLE_MS = 1500
+const POLL_BUSY_MS = 3000
 const POLL_RETRY_MS = 5000
+
+export { POLL_IDLE_MS, POLL_BUSY_MS }
 
 /**
  * Aggregated workspace snapshot from GET /api/state (plan 5.3):
@@ -36,6 +39,7 @@ export const useAppStateStore = defineStore('appState', () => {
   const status = ref<StatusSnapshot>(null)
   const lastUpdatedAt = ref<number | null>(null)
   const loading = ref(false)
+  const pollIntervalMs = ref(POLL_IDLE_MS)
   const error = ref<string | null>(null)
   const errorStatus = ref<number | null>(null)
 
@@ -103,7 +107,7 @@ export const useAppStateStore = defineStore('appState', () => {
     timer = window.setTimeout(async () => {
       timer = null
       await refresh()
-      scheduleNext(error.value ? POLL_RETRY_MS : POLL_IDLE_MS)
+      scheduleNext(error.value ? POLL_RETRY_MS : pollIntervalMs.value)
     }, delay)
   }
 
@@ -135,6 +139,11 @@ export const useAppStateStore = defineStore('appState', () => {
     }
   }
 
+  /** Plan 5.3: 1.5s while idle, 3s while a background task is running. */
+  function setPollInterval(ms: number): void {
+    pollIntervalMs.value = Math.max(500, ms)
+  }
+
   function setCurrentInstanceId(id: string | null): void {
     currentInstanceId.value = id
   }
@@ -153,6 +162,7 @@ export const useAppStateStore = defineStore('appState', () => {
     status,
     lastUpdatedAt,
     loading,
+    pollIntervalMs,
     error,
     errorStatus,
     currentInstance,
@@ -164,6 +174,7 @@ export const useAppStateStore = defineStore('appState', () => {
     refresh,
     startPolling,
     stopPolling,
+    setPollInterval,
     setCurrentInstanceId,
     replaceSettings,
   }

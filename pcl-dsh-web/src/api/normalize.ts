@@ -1,10 +1,18 @@
 import type {
   AccountSummary,
   AppSettings,
+  AvailableRuntimes,
+  DeleteInstanceResult,
   InstanceSummary,
+  JobError,
+  JobLogEntry,
+  JobState,
+  JobView,
+  LogTail,
   RuntimeSummary,
   StateResponse,
   StatusSnapshot,
+  WebUrl,
 } from './types'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -65,23 +73,30 @@ export function normalizeSettings(raw: unknown): AppSettings {
   }
 }
 
+export function normalizeInstance(raw: unknown): InstanceSummary | null {
+  if (!isRecord(raw)) return null
+  const item = isRecord(raw.instance) ? raw.instance : raw
+  const id = asString(item.id)
+  if (!id) return null
+  return {
+    id,
+    name: asString(item.name) || id,
+    version: asString(item.version) || asString(item.runtimeVersion),
+    profile: asString(item.profile) || 'web',
+    port: asNumberOrNull(item.port),
+    profiles: asArray(item.profiles).map((value) => asString(value)).filter(Boolean),
+    accountId: asNullableString(item.accountId),
+    path: asNullableString(item.path),
+    status: asStatusText(item.status),
+  }
+}
+
 export function normalizeInstances(raw: unknown): InstanceSummary[] {
   const record = isRecord(raw) ? raw : {}
   const list = Array.isArray(raw) ? raw : asArray(record.instances ?? record.items)
-  return list.filter(isRecord).map((item, index) => {
-    const id = asString(item.id) || 'instance-' + String(index + 1)
-    return {
-      id,
-      name: asString(item.name) || id,
-      version: asString(item.version) || asString(item.runtimeVersion),
-      profile: asString(item.profile) || 'web',
-      port: asNumberOrNull(item.port),
-      profiles: asArray(item.profiles).map((value) => asString(value)).filter(Boolean),
-      accountId: asNullableString(item.accountId),
-      path: asNullableString(item.path),
-      status: asStatusText(item.status),
-    }
-  })
+  return list
+    .map((item) => normalizeInstance(item))
+    .filter((item): item is InstanceSummary => item !== null)
 }
 
 export function normalizeRuntimes(raw: unknown): RuntimeSummary[] {
@@ -104,6 +119,7 @@ export function normalizeAccounts(raw: unknown): AccountSummary[] {
     baseUrl: asString(item.baseUrl) || undefined,
     model: asString(item.model) || undefined,
     hasKey: typeof item.hasKey === 'boolean' ? item.hasKey : undefined,
+    status: asString(item.status) || undefined,
   }))
 }
 
@@ -125,5 +141,117 @@ export function normalizeState(raw: unknown): StateResponse {
     accounts: normalizeAccounts(record.accounts),
     availableVersions: asArray(record.availableVersions).map((value) => asString(value)).filter(Boolean),
     status: normalizeStatus(record.status),
+  }
+}
+
+export function normalizeAvailableVersions(raw: unknown): AvailableRuntimes {
+  const record = isRecord(raw) ? raw : {}
+  const list = Array.isArray(raw)
+    ? raw
+    : asArray(record.versions ?? record.availableVersions ?? record.items)
+  const versions = list
+    .map((value) => (typeof value === 'string' ? value : isRecord(value) ? asString(value.version) : ''))
+    .filter((value) => value !== '')
+  return { versions }
+}
+
+/** GET /api/instances/{id}/web-url returns {url}; a bare string is accepted as a fallback. */
+export function normalizeWebUrl(raw: unknown): WebUrl {
+  if (typeof raw === 'string') return { url: raw }
+  const record = isRecord(raw) ? raw : {}
+  return { url: asString(record.url ?? record.webUrl) }
+}
+
+export function normalizeDeleteResult(raw: unknown): DeleteInstanceResult {
+  const record = isRecord(raw) ? raw : {}
+  return { trashedPath: asString(record.trashedPath ?? record.path) }
+}
+
+/** GET /api/logs/tail lines may be plain strings or {line|text, ts, level} records. */
+export function normalizeLogTail(raw: unknown): LogTail {
+  const record = isRecord(raw) ? raw : {}
+  const list = Array.isArray(raw) ? raw : asArray(record.lines ?? record.entries)
+  const lines = list
+    .map((entry) => {
+      if (typeof entry === 'string') return entry
+      if (isRecord(entry)) return asString(entry.line ?? entry.text ?? entry.message)
+      return ''
+    })
+    .filter((line) => line !== '')
+  return { lines }
+}
+
+function normalizeJobState(raw: unknown): JobState {
+  const text = asString(raw).toUpperCase()
+  if (text === 'SUCCEEDED' || text === 'FAILED' || text === 'CANCELLED' || text === 'RUNNING') return text
+  // Unknown/newer states stay visible rather than silently becoming RUNNING.
+  return text === '' ? 'RUNNING' : (text as JobState)
+}
+
+function normalizeJobError(raw: unknown): JobError | null {
+  if (!isRecord(raw)) return null
+  const code = asString(raw.code)
+  const message = asString(raw.message)
+  if (!code && !message) return null
+  return { code: code || 'INTERNAL', message: message || '任务未完成。', details: raw.details }
+}
+
+/** Normalize a JobManager.View (the body of a 202 and of GET /api/jobs/{id}). */
+export function normalizeJob(raw: unknown): JobView | null {
+  if (!isRecord(raw)) return null
+  const id = asString(raw.id ?? raw.jobId)
+  if (!id) return null
+  return {
+    id,
+    type: asString(raw.type),
+    state: normalizeJobState(raw.state),
+    phase: asString(raw.phase),
+    message: asString(raw.message),
+    createdAt: asNumberOrNull(raw.createdAt),
+    startedAt: asNumberOrNull(raw.startedAt),
+    finishedAt: asNumberOrNull(raw.finishedAt),
+    lastSeq: asNumberOrNull(raw.lastSeq) ?? 0,
+    result: raw.result ?? null,
+    error: normalizeJobError(raw.error),
+  }
+}
+
+/** 202 responses are a Job View today; keep tolerating the compact {jobId} envelope. */
+export function normalizeJobAccepted(raw: unknown): JobView | null {
+  const job = normalizeJob(raw)
+  if (job) return job
+  if (!isRecord(raw)) return null
+  const id = asString(raw.jobId ?? raw.id)
+  if (!id) return null
+  return {
+    id,
+    type: asString(raw.type),
+    state: normalizeJobState(raw.state),
+    phase: asString(raw.phase),
+    message: asString(raw.message),
+    createdAt: null,
+    startedAt: null,
+    finishedAt: null,
+    lastSeq: 0,
+    result: null,
+    error: null,
+  }
+}
+
+export function normalizeJobList(raw: unknown): JobView[] {
+  const list = Array.isArray(raw) ? raw : isRecord(raw) ? asArray(raw.jobs ?? raw.items) : []
+  return list.map((item) => normalizeJob(item)).filter((item): item is JobView => item !== null)
+}
+
+export function normalizeJobLogEntry(raw: unknown): JobLogEntry | null {
+  if (!isRecord(raw)) return null
+  const line = asString(raw.line ?? raw.message)
+  if (line === '') return null
+  return {
+    jobId: asString(raw.jobId),
+    seq: asNumberOrNull(raw.seq) ?? 0,
+    ts: asNumberOrNull(raw.ts) ?? Date.now(),
+    level: asString(raw.level) || 'info',
+    line,
   }
 }

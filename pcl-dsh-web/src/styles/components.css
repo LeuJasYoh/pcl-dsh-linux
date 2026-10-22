@@ -716,3 +716,322 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ---------- modal dialogs (lightweight, no UI framework) ---------- */
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: rgba(20, 20, 30, 0.38);
+}
+
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  background: var(--monet-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--dialog-shadow);
+  outline: none;
+}
+
+.modal-panel--wide {
+  width: min(640px, 100%);
+}
+
+.modal-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  color: var(--color-on-header);
+  background: var(--color-header);
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.modal-close:hover {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  background: var(--monet-surface-container-low);
+  border-top: 1px solid var(--color-border);
+}
+
+.confirm-question {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.confirm-detail {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- compact inline form ---------- */
+
+.inline-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.inline-field .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.btn--danger {
+  color: var(--monet-error);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--monet-error-container);
+}
+
+/* ---------- home task card log tail ---------- */
+
+.task-heading__title {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.task-log-tail {
+  max-height: 66px;
+  padding: 6px 8px;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--monet-surface-container);
+  border-radius: var(--radius-sm);
+}
+
+.task-job-id {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- runtime list ---------- */
+
+.runtime-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.runtime-card__info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.runtime-card__heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.version-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(118, 118, 131, 0.14);
+}
+
+.version-row__name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ---------- task/log viewer ---------- */
+
+.log-area--live {
+  min-height: 220px;
+  max-height: 42vh;
+}
+
+.log-area--tail {
+  min-height: 140px;
+  max-height: 28vh;
+}
+
+.log-bottom-button {
+  align-self: flex-end;
+  margin-top: -6px;
+}
+
+.log-copy-area {
+  width: 100%;
+  min-height: 220px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+  resize: vertical;
+}
+
+.task-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-summary__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+}
+
+.task-summary__phase {
+  font-size: 13px;
+}
+
+.task-summary__result {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- home current instance card ---------- */
+
+.home-instance-card {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(320px, calc(100% - 300px));
+}
+
+.home-instance-card__heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-instance-card__name {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-instance-card__meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- global task strip ---------- */
+
+.task-strip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+}
+
+.task-strip__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-strip__elapsed {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- account list ---------- */
+
+.account-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.account-card__info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-card__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}

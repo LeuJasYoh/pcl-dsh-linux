@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { useNotifyStore } from '@/stores/notify'
 import { useAppStateStore } from '@/stores/state'
 import { displayInstanceStatus } from '@/utils/display'
 
@@ -29,7 +28,6 @@ const generalNav: NavEntry[] = [
 const route = useRoute()
 const router = useRouter()
 const appState = useAppStateStore()
-const notify = useNotifyStore()
 
 const current = computed(() => appState.currentInstance)
 const boundAccount = computed(() => {
@@ -58,7 +56,6 @@ function navigate(name: string): void {
 
 function openCurrent(): void {
   void router.push({ name: 'instances' })
-  if (!current.value) notify.info('还没有实例；创建实例接口将在后续增量提供（M2 F-5）。')
 }
 </script>
 

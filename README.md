@@ -17,7 +17,8 @@ M1 起步阶段：Maven 多模块骨架、core 业务代码迁移（含 104 项�
 - core：104 项测试迁移并通过；RuntimeService 支持发布包只读工具根 + 可写 shim 目录；ProcessService 增加 runningIds()。
 - server：密码登录 + 首次登录强制改密 + 会话/CSRF/登录限流/审计；JobManager 单任务 409、取消/超时、SSE 事件流；/api/health、/api/auth/*、/api/state、/api/instances、/api/runtimes、/api/settings；可执行 jar 冒烟通过（health/401/登录/强制改密）。
 - web：Vue 3 + TS + Vite + Pinia 工程；AppShell/40px 页头/200px 侧栏/登录页/首页启动区/实例页/设置页/占位页；npm run build 通过。
-- 下一步：M0 服务器 PoC（等待执行结果）、实例 CRUD/启停、运行时安装任务、前端交互补齐、DSH 反代。
+- 增量 2：server 实例生命周期/启动 Job、运行时安装探测删除、日志接口（core 104 + server 24 测试通过）；web 实例弹窗/启停/任务 SSE/运行时/日志/设置交互；packaging systemd 与 Nginx 模板；真实后端 API 冒烟通过（登录/改密/建实例/选择/web-url 409/删除/版本查询/日志）。
+- 下一步：M0 服务器 PoC（等待执行结果）、账户/插件/目录后端、整合包与复制、前端账户/插件/整合包页面、DSH 反代。
 
 ## 工程结构
 

@@ -6,6 +6,9 @@ import { elapsedText } from '@/utils/display'
 const props = defineProps<{
   phase: string
   startedAt: number | null
+  typeLabel?: string
+  jobId?: string | null
+  logsTail?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +19,7 @@ const now = ref(Date.now())
 let timer: number | null = null
 
 const elapsed = computed(() => elapsedText(props.startedAt, now.value))
+const tail = computed(() => (props.logsTail ?? []).filter((line) => line.trim() !== '').slice(-3))
 
 onMounted(() => {
   timer = window.setInterval(() => {
@@ -29,13 +33,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="card home-task-card"
-    data-testid="home-task-panel"
-    title="任务计数（运行时/依赖/插件/文件）由任务事件接入后提供"
-  >
+  <div class="card home-task-card" data-testid="home-task-panel">
     <div class="task-heading">
-      <span>任务进行中</span>
+      <span class="task-heading__title">
+        任务进行中
+        <span v-if="typeLabel" class="badge badge--blue" data-testid="home-task-type">{{ typeLabel }}</span>
+      </span>
       <span class="task-elapsed" data-testid="home-task-elapsed">{{ elapsed }}</span>
     </div>
     <div class="task-body">
@@ -45,11 +48,7 @@ onBeforeUnmount(() => {
         查看任务
       </button>
     </div>
-    <div class="task-counts" aria-label="任务计数占位">
-      <span class="task-count">运行时<strong>—</strong></span>
-      <span class="task-count">依赖<strong>—</strong></span>
-      <span class="task-count">插件<strong>—</strong></span>
-      <span class="task-count">文件<strong>—</strong></span>
-    </div>
+    <pre v-if="tail.length" class="task-log-tail" data-testid="home-task-log">{{ tail.join('\n') }}</pre>
+    <p v-if="jobId" class="task-job-id">任务 {{ jobId }}</p>
   </div>
 </template>

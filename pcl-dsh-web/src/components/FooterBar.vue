@@ -2,14 +2,19 @@
 import { computed } from 'vue'
 
 import { useAuthStore } from '@/stores/auth'
+import { useJobStore } from '@/stores/jobs'
 import { useAppStateStore } from '@/stores/state'
 import { shortStatus } from '@/utils/display'
 import { backendLabel } from '@/utils/errors'
 
 const appState = useAppStateStore()
 const auth = useAuthStore()
+const jobs = useJobStore()
 
-const message = computed(() => shortStatus(appState.statusText, 160) || '正在读取工作空间…')
+const message = computed(() => {
+  if (jobs.active) return shortStatus('进行中：' + jobs.progressText, 160)
+  return shortStatus(appState.statusText, 160) || '正在读取工作空间…'
+})
 const backend = computed(() => appState.backendState)
 const label = computed(() => backendLabel(appState.errorStatus, appState.lastUpdatedAt !== null))
 const dotClass = computed(() => {

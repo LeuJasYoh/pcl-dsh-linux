@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import iconUrl from '@/assets/icons/hdsl.png'
 import { useAuthStore } from '@/stores/auth'
+import { useJobStore } from '@/stores/jobs'
 import { useAppStateStore } from '@/stores/state'
 import { shortStatus } from '@/utils/display'
 
@@ -13,13 +14,17 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const appState = useAppStateStore()
+const jobs = useJobStore()
 
 const isHome = computed(() => route.name === 'home')
 const title = computed(
   () => 'PCL-DSH-Linux ' + auth.version + (isHome.value ? '' : '  /  ' + String(route.meta.title ?? '')),
 )
-const statusText = computed(() => shortStatus(appState.statusText, 160))
-const taskActive = computed(() => appState.taskActive)
+const taskActive = computed(() => jobs.active || appState.taskActive)
+const statusText = computed(() => {
+  const text = jobs.active ? '进行中：' + jobs.progressText : appState.statusText
+  return shortStatus(text, 160)
+})
 
 function goHome(): void {
   if (!isHome.value) void router.push({ name: 'home' })
