@@ -80,8 +80,9 @@ $tarHash = (Get-FileHash $tarPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Output '=== Creating source archive ==='
 $sourceZip = Join-Path $distRoot ('pcl-dsh-linux-' + $Version + '-source.zip')
 Remove-Item $sourceZip -Force -ErrorAction SilentlyContinue
-& git -C $projectRoot archive --format=zip --prefix=('pcl-dsh-linux-' + $Version + '/') -o $sourceZip 'HEAD'
-if ($LASTEXITCODE -ne 0) { Write-Output 'WARN: git archive failed (uncommitted changes are not included).' }
+$sourcePrefix = 'pcl-dsh-linux-' + $Version + '/'
+& git -C $projectRoot archive --format=zip "--prefix=$sourcePrefix" -o $sourceZip HEAD
+if ($LASTEXITCODE -ne 0) { Write-Output 'WARN: git archive failed (uncommitted changes are not included).'; $LASTEXITCODE = 0 }
 
 Write-Output ''
 Write-Output 'Package complete:'
