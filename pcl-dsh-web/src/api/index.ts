@@ -1,26 +1,40 @@
 import { request } from './client'
 import {
+  normalizeAccount,
+  normalizeAccounts,
   normalizeAvailableVersions,
+  normalizeBackgroundAsset,
+  normalizeCatalogPage,
   normalizeDeleteResult,
   normalizeInstance,
   normalizeInstances,
   normalizeJobAccepted,
   normalizeJobList,
   normalizeLogTail,
+  normalizePluginDetails,
+  normalizePlugins,
+  normalizeProviders,
   normalizeRuntimes,
   normalizeSettings,
   normalizeState,
   normalizeWebUrl,
 } from './normalize'
 import type {
+  AccountInput,
+  AccountSummary,
   AppSettings,
   AuthMe,
   AvailableRuntimes,
+  BackgroundAsset,
+  CatalogPage,
   DeleteInstanceResult,
   InstanceInput,
   InstanceSummary,
   JobView,
   LogTail,
+  PluginDetails,
+  PluginEntry,
+  ProviderPreset,
   RuntimeSummary,
   StateResponse,
   WebUrl,
@@ -28,16 +42,24 @@ import type {
 
 export { ApiError } from './client'
 export type {
+  AccountInput,
   AccountSummary,
   AppSettings,
   AuthMe,
   AvailableRuntimes,
+  BackgroundAsset,
+  CatalogItem,
+  CatalogPage,
   DeleteInstanceResult,
+  InstallTarget,
   InstanceInput,
   InstanceSummary,
   JobState,
   JobView,
   LogTail,
+  PluginDetails,
+  PluginEntry,
+  ProviderPreset,
   RuntimeSummary,
   StateResponse,
   WebUrl,
@@ -112,6 +134,85 @@ export const runtimesApi = {
     normalizeDeleteResult(await request<unknown>('DELETE', '/api/runtimes/' + encodeURIComponent(version))),
 }
 
+export const accountsApi = {
+  providers: async (): Promise<ProviderPreset[]> =>
+    normalizeProviders(await request<unknown>('GET', '/api/accounts/providers')),
+  list: async (): Promise<AccountSummary[]> =>
+    normalizeAccounts(await request<unknown>('GET', '/api/accounts')),
+  create: async (input: AccountInput): Promise<AccountSummary | null> =>
+    normalizeAccount(await request<unknown>('POST', '/api/accounts', input)),
+  update: async (id: string, input: AccountInput): Promise<AccountSummary | null> =>
+    normalizeAccount(await request<unknown>('PUT', '/api/accounts/' + encodeURIComponent(id), input)),
+  remove: (id: string): Promise<unknown> =>
+    request<unknown>('DELETE', '/api/accounts/' + encodeURIComponent(id)),
+}
+
+/**
+ * Scoped npm names must reach the backend as the literal "@scope/name" path.
+ * The servlet container rejects percent-encoded slashes (%2F), so only unsafe
+ * characters are escaped per segment and the scope separator stays a real "/".
+ */
+function pluginNamePath(name: string): string {
+  return name
+    .split('/')
+    .map((segment) => segment.replace(/[^A-Za-z0-9@._~-]/g, (char) => encodeURIComponent(char)))
+    .join('/')
+}
+
+export const pluginsApi = {
+  list: async (instanceId: string, profile?: string): Promise<PluginEntry[]> => {
+    const query = profile ? '?profile=' + encodeURIComponent(profile) : ''
+    return normalizePlugins(
+      await request<unknown>('GET', instancePath(instanceId, '/plugins') + query),
+    )
+  },
+  add: async (instanceId: string, spec: string): Promise<JobView> => {
+    const job = normalizeJobAccepted(
+      await request<unknown>('POST', instancePath(instanceId, '/plugins'), { spec }),
+    )
+    if (!job) throw new MissingJobError()
+    return job
+  },
+  update: async (instanceId: string, name: string): Promise<JobView> => {
+    const job = normalizeJobAccepted(
+      await request<unknown>('PATCH', instancePath(instanceId, '/plugins/' + pluginNamePath(name))),
+    )
+    if (!job) throw new MissingJobError()
+    return job
+  },
+  remove: async (instanceId: string, name: string): Promise<JobView> => {
+    const job = normalizeJobAccepted(
+      await request<unknown>('DELETE', instancePath(instanceId, '/plugins/' + pluginNamePath(name))),
+    )
+    if (!job) throw new MissingJobError()
+    return job
+  },
+}
+
+export const catalogApi = {
+  search: async (query: string, page = 1, refresh = false): Promise<CatalogPage> => {
+    const params = new URLSearchParams()
+    if (query.trim()) params.set('q', query.trim())
+    params.set('page', String(Math.max(1, page)))
+    if (refresh) params.set('refresh', 'true')
+    return normalizeCatalogPage(
+      await request<unknown>('GET', '/api/plugin-catalog?' + params.toString()),
+    )
+  },
+  resolve: async (repo: string, refresh = false): Promise<PluginDetails> => {
+    const segments = repo.split('/').map((part) => encodeURIComponent(part))
+    const query = refresh ? '?refresh=true' : ''
+    return normalizePluginDetails(
+      await request<unknown>('GET', '/api/plugin-catalog/' + segments.join('/') + query),
+    )
+  },
+}
+
+export const artifactsApi = {
+  /** Downloads stream through the session cookie; artifacts appear in M3 pack flows first. */
+  url: (id: string): string => '/api/artifacts/' + encodeURIComponent(id),
+}
+
 export const jobsApi = {
   list: async (): Promise<JobView[]> => normalizeJobList(await request<unknown>('GET', '/api/jobs')),
   get: async (id: string): Promise<JobView> => {
@@ -134,13 +235,13 @@ export const settingsApi = {
   update: async (payload: AppSettings): Promise<AppSettings> =>
     normalizeSettings(await request<unknown>('PUT', '/api/settings', payload)),
   /**
-   * POST /api/settings/background is planned in 4.7 but may not exist in this increment.
-   * Callers must treat 404/405/501 as "not implemented yet" and say so in the UI.
+   * POST /api/settings/background (multipart, field "file") returns the stored asset URL.
+   * Callers treat 404/405/501 as "not implemented yet" and say so in the UI.
    */
-  uploadBackground: async (file: File): Promise<AppSettings> => {
+  uploadBackground: async (file: File): Promise<BackgroundAsset> => {
     const formData = new FormData()
     formData.append('file', file)
-    return normalizeSettings(
+    return normalizeBackgroundAsset(
       await request<unknown>('POST', '/api/settings/background', undefined, { formData }),
     )
   },

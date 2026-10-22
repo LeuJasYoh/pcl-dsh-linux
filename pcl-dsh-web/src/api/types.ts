@@ -156,3 +156,75 @@ export interface ApiErrorBody {
   details?: unknown
   traceId?: string
 }
+
+/* ------------------------------------------------------------------ */
+/* Third increment (M2 F-7/F-13/F-15): accounts, plugins, catalog, assets */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/accounts/providers: official provider presets. */
+export interface ProviderPreset {
+  id: string
+  name: string
+  baseUrl: string
+  model: string
+}
+
+/** POST/PUT /api/accounts body; a blank apiKey on edit keeps the stored secret. */
+export interface AccountInput {
+  name: string
+  provider: string
+  baseUrl: string
+  model: string
+  apiKey?: string
+}
+
+/** GET /api/instances/{id}/plugins?profile= item. */
+export interface PluginEntry {
+  name: string
+  version: string
+  description: string
+  source: string
+}
+
+/** GET /api/plugin-catalog?q=&page=&refresh= item. */
+export interface CatalogItem {
+  repo: string
+  name: string
+  description: string
+  stars: number
+  url: string
+  spec: string
+  status: string
+}
+
+export interface CatalogPage {
+  query: string
+  page: number
+  total: number
+  hasNext: boolean
+  fromCache: boolean
+  warning: string
+  items: CatalogItem[]
+}
+
+/** GET /api/plugin-catalog/{owner}/{repo}: resolved install targets. */
+export interface InstallTarget {
+  name: string
+  version: string
+  spec: string
+  packagePath: string
+  evidenceUrl: string
+}
+
+export interface PluginDetails {
+  repo: string
+  status: string
+  message: string
+  fromCache: boolean
+  targets: InstallTarget[]
+}
+
+/** POST /api/settings/background response. */
+export interface BackgroundAsset {
+  background: string
+}

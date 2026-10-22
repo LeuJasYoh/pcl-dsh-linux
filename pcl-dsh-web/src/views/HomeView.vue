@@ -11,7 +11,7 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import { useJobStore } from '@/stores/jobs'
 import { useNotifyStore } from '@/stores/notify'
 import { useAppStateStore } from '@/stores/state'
-import { resolveBackground } from '@/utils/backgrounds'
+import { backgroundPosition, resolveBackground } from '@/utils/backgrounds'
 import { displayPort, isRunningStatus } from '@/utils/display'
 import { describeApiError } from '@/utils/errors'
 
@@ -26,7 +26,13 @@ const saving = ref(false)
 const dialogError = ref('')
 const homeMessage = ref('')
 
-const background = computed(() => 'url("' + resolveBackground(appState.settings.background) + '")')
+const backgroundStyle = computed(() => {
+  const background = appState.settings.background
+  return {
+    backgroundImage: 'url("' + resolveBackground(background) + '")',
+    backgroundPosition: backgroundPosition(background),
+  }
+})
 const current = computed(() => appState.currentInstance)
 const running = computed(() => current.value !== null && isRunningStatus(current.value.status))
 const webReady = computed(() => {
@@ -180,7 +186,7 @@ async function selectInstance(id: string): Promise<void> {
 </script>
 
 <template>
-  <div class="home-page" data-testid="page-home" :style="{ backgroundImage: background }">
+  <div class="home-page" data-testid="page-home" :style="backgroundStyle">
     <div class="home-page__shade" aria-hidden="true"></div>
 
     <section

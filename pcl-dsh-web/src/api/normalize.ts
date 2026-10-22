@@ -2,13 +2,20 @@ import type {
   AccountSummary,
   AppSettings,
   AvailableRuntimes,
+  BackgroundAsset,
+  CatalogItem,
+  CatalogPage,
   DeleteInstanceResult,
+  InstallTarget,
   InstanceSummary,
   JobError,
   JobLogEntry,
   JobState,
   JobView,
   LogTail,
+  PluginDetails,
+  PluginEntry,
+  ProviderPreset,
   RuntimeSummary,
   StateResponse,
   StatusSnapshot,
@@ -255,3 +262,122 @@ export function normalizeJobLogEntry(raw: unknown): JobLogEntry | null {
     line,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Third increment: accounts / plugins / catalog / assets             */
+/* ------------------------------------------------------------------ */
+
+export function normalizeProvider(raw: unknown): ProviderPreset | null {
+  if (!isRecord(raw)) return null
+  const id = asString(raw.id)
+  if (!id) return null
+  return {
+    id,
+    name: asString(raw.name) || id,
+    baseUrl: asString(raw.baseUrl ?? raw.baseURL),
+    model: asString(raw.model),
+  }
+}
+
+export function normalizeProviders(raw: unknown): ProviderPreset[] {
+  const record = isRecord(raw) ? raw : {}
+  const list = Array.isArray(raw) ? raw : asArray(record.providers ?? record.items)
+  return list.map((item) => normalizeProvider(item)).filter((item): item is ProviderPreset => item !== null)
+}
+
+/** A single account from POST/PUT /api/accounts; lists use normalizeAccounts. */
+export function normalizeAccount(raw: unknown): AccountSummary | null {
+  if (!isRecord(raw)) return null
+  const item = isRecord(raw.account) ? raw.account : raw
+  const id = asString(item.id)
+  if (!id) return null
+  return {
+    id,
+    name: asString(item.name) || id,
+    provider: asString(item.provider),
+    baseUrl: asString(item.baseUrl) || undefined,
+    model: asString(item.model) || undefined,
+    hasKey: typeof item.hasKey === 'boolean' ? item.hasKey : undefined,
+    status: asString(item.status) || undefined,
+  }
+}
+
+export function normalizePlugins(raw: unknown): PluginEntry[] {
+  const record = isRecord(raw) ? raw : {}
+  const list = Array.isArray(raw) ? raw : asArray(record.plugins ?? record.items)
+  return list
+    .filter(isRecord)
+    .map((item) => ({
+      // The desktop UiState.PluginItem calls it "name"; tolerate an id-only fallback.
+      name: asString(item.name ?? item.id ?? item.spec),
+      version: asString(item.version),
+      description: asString(item.description ?? item.detail),
+      source: asString(item.source),
+    }))
+    .filter((item) => item.name !== '')
+}
+
+export function normalizeCatalogItem(raw: unknown): CatalogItem | null {
+  if (!isRecord(raw)) return null
+  const repo = asString(raw.repo ?? raw.fullName)
+  if (!repo) return null
+  return {
+    repo,
+    name: asString(raw.name) || repo,
+    description: asString(raw.description),
+    stars: asNumberOrNull(raw.stars) ?? 0,
+    url: asString(raw.url) || 'https://github.com/' + repo,
+    spec: asString(raw.spec),
+    status: asString(raw.status),
+  }
+}
+
+export function normalizeCatalogPage(raw: unknown): CatalogPage {
+  const record = unwrapRecord(raw, 'catalog')
+  const items = asArray(record.items ?? record.entries)
+    .map((item) => normalizeCatalogItem(item))
+    .filter((item): item is CatalogItem => item !== null)
+  const page = asNumberOrNull(record.page) ?? 1
+  return {
+    query: asString(record.query),
+    page: page > 0 ? page : 1,
+    total: asNumberOrNull(record.total) ?? items.length,
+    hasNext: asBoolean(record.hasNext ?? record.has_next),
+    fromCache: asBoolean(record.fromCache ?? record.from_cache ?? record.cached),
+    warning: asString(record.warning),
+    items,
+  }
+}
+
+function normalizeInstallTarget(raw: unknown): InstallTarget | null {
+  if (!isRecord(raw)) return null
+  const spec = asString(raw.spec)
+  if (!spec) return null
+  return {
+    name: asString(raw.name),
+    version: asString(raw.version),
+    spec,
+    packagePath: asString(raw.packagePath ?? raw.path),
+    evidenceUrl: asString(raw.evidenceUrl ?? raw.evidence),
+  }
+}
+
+export function normalizePluginDetails(raw: unknown): PluginDetails {
+  const record = isRecord(raw) ? raw : {}
+  return {
+    repo: asString(record.repo),
+    status: asString(record.status).toUpperCase(),
+    message: asString(record.message ?? record.warning),
+    fromCache: asBoolean(record.fromCache ?? record.from_cache ?? record.cached),
+    targets: asArray(record.targets)
+      .map((item) => normalizeInstallTarget(item))
+      .filter((item): item is InstallTarget => item !== null),
+  }
+}
+
+export function normalizeBackgroundAsset(raw: unknown): BackgroundAsset {
+  if (typeof raw === 'string') return { background: raw }
+  const record = isRecord(raw) ? (isRecord(raw.settings) ? raw.settings : raw) : {}
+  return { background: asString(record.background ?? record.url) }
+}
+

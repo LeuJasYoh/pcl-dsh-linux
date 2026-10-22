@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useJobStore } from '@/stores/jobs'
 import { useNotifyStore } from '@/stores/notify'
 import { POLL_BUSY_MS, POLL_IDLE_MS, useAppStateStore } from '@/stores/state'
-import { resolveBackground } from '@/utils/backgrounds'
+import { backgroundPosition, resolveBackground } from '@/utils/backgrounds'
 
 import FooterBar from './FooterBar.vue'
 import PageHeader from './PageHeader.vue'
@@ -14,7 +14,13 @@ const appState = useAppStateStore()
 const jobs = useJobStore()
 const notify = useNotifyStore()
 
-const backdrop = computed(() => 'url("' + resolveBackground(appState.settings.background) + '")')
+const backdropStyle = computed(() => {
+  const background = appState.settings.background
+  return {
+    backgroundImage: 'url("' + resolveBackground(background) + '")',
+    backgroundPosition: backgroundPosition(background),
+  }
+})
 
 // Plan 5.3: idle polling is 1.5s; while a background task runs it degrades to 3s
 // because SSE is the source of truth for the task itself.
@@ -57,7 +63,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell">
-    <div class="shell-backdrop" :style="{ backgroundImage: backdrop }" aria-hidden="true"></div>
+    <div class="shell-backdrop" :style="backdropStyle" aria-hidden="true"></div>
     <PageHeader />
     <div class="shell-body">
       <SideNav />

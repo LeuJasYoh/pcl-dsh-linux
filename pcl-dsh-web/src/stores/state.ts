@@ -152,6 +152,11 @@ export const useAppStateStore = defineStore('appState', () => {
     settings.value = next
   }
 
+  /** Optimistic list replacement after account mutations (server refresh still follows). */
+  function replaceAccounts(next: AccountSummary[]): void {
+    accounts.value = next
+  }
+
   return {
     currentInstanceId,
     settings,
@@ -177,5 +182,6 @@ export const useAppStateStore = defineStore('appState', () => {
     setPollInterval,
     setCurrentInstanceId,
     replaceSettings,
+    replaceAccounts,
   }
 })

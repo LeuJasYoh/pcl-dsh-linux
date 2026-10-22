@@ -27,18 +27,41 @@ export function findBackground(value: string | null | undefined): BuiltinBackgro
   return BACKGROUNDS.find((entry) => entry.value === value) ?? null
 }
 
+/** Asset URLs served by the backend (/api/assets/backgrounds/...) or plain http(s)/data URLs. */
+export function isCustomBackground(value: string | null | undefined): boolean {
+  if (!value) return false
+  return (
+    value.startsWith('/api/') ||
+    value.startsWith('/') ||
+    value.startsWith('data:') ||
+    value.startsWith('https://') ||
+    value.startsWith('http://')
+  )
+}
+
 /**
  * Builtin backgrounds are bundled PNGs (WebP conversion is a follow-up, plan 5.7).
- * Custom local-file paths from the desktop app cannot be served by the browser, so
- * they fall back to the default builtin art instead of showing a broken image.
+ * Backend-served custom backgrounds are used directly; desktop-only local paths
+ * cannot be served by a browser and fall back to the default builtin art.
  */
 export function resolveBackground(value: string | null | undefined): string {
-  return (findBackground(value) ?? BACKGROUNDS[0]).src
+  const builtin = findBackground(value)
+  if (builtin) return builtin.src
+  if (isCustomBackground(value)) return value as string
+  return BACKGROUNDS[0].src
+}
+
+/** Plan 5.2: builtin art is right-aligned, custom backgrounds are centered. */
+export function backgroundPosition(value: string | null | undefined): 'right center' | 'center center' {
+  if (findBackground(value)) return 'right center'
+  if (isCustomBackground(value)) return 'center center'
+  return 'right center'
 }
 
 export function backgroundTitle(value: string | null | undefined): string {
   const builtin = findBackground(value)
   if (builtin) return builtin.title
-  if (value) return '自定义背景（Web 版暂不支持本地文件，显示默认背景）'
+  if (isCustomBackground(value)) return '自定义背景'
+  if (value) return '自定义背景（Web 版无法显示本地文件，已回退默认背景）'
   return BACKGROUNDS[0].title
 }

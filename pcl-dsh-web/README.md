@@ -20,13 +20,14 @@ npm run preview    # 预览构建产物
 src/
   api/          client.ts（fetch 封装、CSRF、401 处理、FormData）、types.ts、normalize.ts、index.ts
   components/   AppShell/PageHeader/SideNav/FooterBar/AppIcon、首页启动区与任务卡、
-                BaseModal/ConfirmDialog/InstanceDialog、TaskProgressStrip
+                BaseModal/ConfirmDialog/InstanceDialog/AccountDialog、TaskProgressStrip
   router/       8 个业务路由 + /login，登录守卫
   stores/       auth / appState / instances / settings / notify / jobs（任务 + SSE）
   styles/       tokens.css（HMCL 蓝调色板与度量）、base/layout/components.css
   utils/        display/backgrounds/errors/validation/clipboard/jobs
   views/        Login/Home/Instances/Runtimes/Accounts/Plugins/Packs/Logs/Settings
   assets/       backgrounds/whale-01..05.png、icons/hdsl.png（桌面版原始资源）
+public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取）
 ```
 
 ## 视觉与交互约定
@@ -58,11 +59,19 @@ src/
   `/api/settings`、`/api/logs/tail?lines=800`、`/api/jobs/{id}`。
 - 写入：实例 create/update/delete/selection/account/launch/stop、`GET /api/instances/{id}/web-url`、
   运行时 install/probe/delete、`PUT /api/settings`、`POST /api/jobs/{id}/cancel`（详见方案 §4.2）。
+- 账户：`GET /api/accounts/providers`、`GET/POST /api/accounts`、`PUT/DELETE /api/accounts/{id}`
+  （编辑时 apiKey 留空=保留；被实例引用时删除返回 409）。
+- 插件：`GET /api/instances/{id}/plugins?profile=`、`POST /api/instances/{id}/plugins`、
+  `PATCH/DELETE /api/instances/{id}/plugins/{name}`（后三者返回 202 Job，type=PLUGIN_MUTATE）。
+- 插件目录：`GET /api/plugin-catalog?q=&page=&refresh=`（响应 entries）、
+  `GET /api/plugin-catalog/{owner}/{repo}?refresh=`（targets）；status=INSTALLABLE/VIEW_PROJECT/UNRESOLVED。
+- 资源：`POST /api/settings/background`（multipart，返回 `{background:"/api/assets/backgrounds/..."}`，
+  再经 `PUT /api/settings` 生效）、`GET /api/assets/backgrounds/{name}`、`GET /api/artifacts/{id}`。
 - 后端未实现（404/405/501）或不可达时，页面显示明确的「接口尚未实现 / 加载失败」提示与重试按钮，
   绝不伪造实例、账户、日志或任务数据；轮询失败退避到 5 秒并自动恢复。
 - 登录失败区分 401（密码错误）、423（限流锁定）、403 `PASSWORD_CHANGE_REQUIRED`（强制修改初始密码）。
 
-## 本增量（M2 第二增量）完成度
+## M2 第二增量（已完成）
 
 - 实例：创建/编辑（名称、端口、账户；版本与 profile 只读并提示「下一版本提供」）、删除（确认后移入回收目录，
   展示 trashedPath）、选择当前实例、启动/停止、打开 Web（仅后端确认就绪时可用，新标签页）、状态徽标。
@@ -73,19 +82,34 @@ src/
   未保存编辑不会被 1.5s 轮询覆盖；自定义背景上传在接口未实现时明确提示「开发中」。
 - 账户：读取 `/api/state` 的 accounts 展示名称/提供商/模型/密钥有无与状态；新增/编辑给出「下一增量提供」提示。
 
+## 本增量（M2 第三增量）完成度
+
+- 账户：完整 CRUD——列表（名称/provider/baseUrl/model/状态、密钥有无）、新增/编辑弹窗（provider 下拉来自
+  `/api/accounts/providers`，选择后自动填 baseUrl/model；API Key 密码框，编辑留空保留；关闭即清空）、
+  删除确认（被引用 409 中文提示）、绑定当前实例（`PUT /api/instances/{id}/account`，运行中/不存在错误直接展示）。
+- 插件：实例下拉、插件列表（版本 + 官方/社区徽标）、添加输入框（npm 包/GitHub/本地 file: 提示）、
+  更新与移除（确认后 Job，进度经全局任务条/任务页展示，结束后自动刷新列表）。
+- 插件目录（`/runtimes` 页「运行时 / 插件目录」Tab）：搜索/重新获取/分页、项目卡片、
+  检查安装目标（展示包名@版本、仓库路径、核对来源链接）、选择实例与目标后安装（Job）；
+  未解析/仅可查看项目不提供安装入口，只保留「查看项目」。
+- 设置：自定义背景上传（PNG/JPEG ≤20MB → 应用预览 → 保存设置；接口未就绪时明确提示开发中）；
+  内置背景仍可用，自定义背景按方案居中显示；关于页 GPL-3.0 全文与 HMCL 附加条款弹窗（文本随 `public/licenses/` 打包）。
+
 ## 与桌面版的已知偏差
 
 1. 桌面版状态文本位于标题栏；Web 同时提供底部 24px 状态栏（任务/后端连接/版本/许可），更适合浏览器。
 2. 窗口拖动/缩放/最大化/关闭按钮置灰；「打开文件夹」动作不提供，实例路径改为只读展示。
-3. 自定义背景上传依赖 `POST /api/settings/background`（后端尚未实现），当前明确提示开发中；内置背景可选可保存。
+3. 自定义背景走服务端上传与 `/api/assets/backgrounds/` 资源地址；上传后需再点“保存设置”写入配置（桌面版为本地文件路径）。
 4. 「打开 Web」使用后端返回的地址：本增量后端返回 `http://127.0.0.1:<port>/` 回环地址（反代增量后改为
    `/workbench/{id}/`）；服务器部署在远端时该地址无法直连，需等反代增量。
-5. 复制实例、账户新增/编辑/删除/绑定、插件页、整合包页仍在后续增量；按钮禁用或点击后给出明确说明。
+5. 实例复制、整合包导入/导出、桌面版下载/插件目录之外的高级插件操作仍在后续增量；按钮禁用或给出明确说明。
+6. 插件页要求实例已停止（与后端一致）；插件目录安装需先确认目标，未解析项目只提供查看入口。
 6. 内置背景仍为桌面版原始 PNG（合计约 7.3 MB），WebP/缩略图优化（方案 §5.7）待后续。
 
 ## 待办
 
 - Playwright 验收用例（方案 §5.4 的 15 条）与桌面版截图对照。
 - 反代增量接入后，将「打开 Web」切换为 `/workbench/{id}/` 并处理远端部署。
-- 实例复制、账户管理、插件页、整合包页交互（M3）。
+- 实例复制、整合包页（预览/导入/导出/artifacts 下载）交互（M3）。
+- 插件目录分页缓存与更多筛选（M3 打磨）。
 - 内置背景转 WebP/缩略图（首屏资源目标 < 2 MB）。

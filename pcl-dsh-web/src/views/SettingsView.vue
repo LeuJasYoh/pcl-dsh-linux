@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { ApiError } from '@/api'
-import { settingsApi } from '@/api'
+import { ApiError, settingsApi } from '@/api'
 import type { AppSettings } from '@/api/types'
 import AppIcon from '@/components/AppIcon.vue'
 import AppNotice from '@/components/AppNotice.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import TaskProgressStrip from '@/components/TaskProgressStrip.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifyStore } from '@/stores/notify'
 import { useAppStateStore } from '@/stores/state'
-import { BACKGROUNDS, DEFAULT_BACKGROUND, findBackground } from '@/utils/backgrounds'
+import {
+  BACKGROUNDS,
+  DEFAULT_BACKGROUND,
+  backgroundPosition,
+  findBackground,
+  isCustomBackground,
+  resolveBackground,
+} from '@/utils/backgrounds'
 import { describeApiError } from '@/utils/errors'
 import { validateSettings } from '@/utils/validation'
 
@@ -35,6 +42,12 @@ const fileInput = ref<HTMLInputElement | null>(null)
 
 const backgroundValue = computed(() => findBackground(form.value.background))
 const customBackground = computed(() => Boolean(form.value.background) && backgroundValue.value === null)
+const customBackgroundDisplayable = computed(() => isCustomBackground(form.value.background))
+const customPreview = computed(() => resolveBackground(form.value.background))
+const backgroundPreviewStyle = computed(() => ({
+  backgroundImage: 'url("' + customPreview.value + '")',
+  backgroundPosition: backgroundPosition(form.value.background),
+}))
 const registryPlaceholder = computed(() => 'https://registry.npmjs.org')
 
 onMounted(() => {
@@ -91,6 +104,7 @@ function chooseBackground(value: string): void {
 
 function useDefaultBackground(): void {
   form.value.background = DEFAULT_BACKGROUND
+  uploadNote.value = ''
   markDirty()
 }
 
@@ -126,8 +140,8 @@ async function onBackgroundFile(event: Event): Promise<void> {
   input.value = ''
   if (!file) return
   uploadNote.value = ''
-  if (!/^image\//.test(file.type)) {
-    uploadNote.value = '请选择 PNG、JPEG 或 WebP 图片。'
+  if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+    uploadNote.value = '请选择 PNG 或 JPEG 图片。'
     return
   }
   if (file.size > 20 * 1024 * 1024) {
@@ -137,13 +151,15 @@ async function onBackgroundFile(event: Event): Promise<void> {
   uploadBusy.value = true
   try {
     const updated = await settingsApi.uploadBackground(file)
-    if (updated.background) {
-      form.value.background = updated.background
-      markDirty()
-      notify.success('背景已上传；点击“保存设置”后生效。')
-    } else {
-      uploadNote.value = '上传接口已接受文件，但没有返回背景资源 id；请刷新后确认。'
+    if (!updated.background) {
+      uploadNote.value = '上传接口已接受文件，但没有返回背景资源地址；请刷新后确认。'
+      return
     }
+    // Upload stores the asset; applying means putting its URL into the settings form.
+    form.value.background = updated.background
+    uploadNote.value = '背景已上传并应用；点击“保存设置”后写入配置。'
+    markDirty()
+    notify.success('自定义背景已上传；点击“保存设置”后保存。')
   } catch (caught) {
     if (caught instanceof ApiError && (caught.status === 404 || caught.status === 405 || caught.status === 501)) {
       uploadNote.value = '自定义背景上传接口尚未实现（开发中）；当前可选择 5 张内置背景并保存。'
@@ -155,8 +171,43 @@ async function onBackgroundFile(event: Event): Promise<void> {
   }
 }
 
-function licenseNotBundled(kind: string): void {
-  notify.info(kind + '的离线文本将随发布包提供；当前可在仓库 LICENSE 与 THIRD_PARTY_NOTICES.md 查看。')
+// ---------------------------------------------------------------- about / licenses
+type LicenseTab = 'gpl' | 'hmcl'
+
+const licenseTab = ref<LicenseTab | null>(null)
+const licenseText = ref('')
+const licenseLoading = ref(false)
+const licenseError = ref('')
+
+const LICENSE_FILES: Record<LicenseTab, { url: string; title: string }> = {
+  gpl: { url: '/licenses/GPL-3.0.txt', title: 'GPL 第 3 版' },
+  hmcl: { url: '/licenses/HMCL-ADDITIONAL-TERMS.md', title: 'HMCL 附加条款' },
+}
+
+async function openLicense(tab: LicenseTab): Promise<void> {
+  licenseTab.value = tab
+  await loadLicense(tab)
+}
+
+async function loadLicense(tab: LicenseTab): Promise<void> {
+  licenseText.value = ''
+  licenseError.value = ''
+  licenseLoading.value = true
+  try {
+    const response = await fetch(LICENSE_FILES[tab].url, { credentials: 'include' })
+    if (!response.ok) throw new Error('HTTP ' + String(response.status))
+    licenseText.value = await response.text()
+  } catch {
+    licenseError.value = '无法读取许可文本，请查看随程序提供的 LICENSE 文件。'
+  } finally {
+    licenseLoading.value = false
+  }
+}
+
+function switchLicense(tab: LicenseTab): void {
+  if (tab === licenseTab.value) return
+  licenseTab.value = tab
+  void loadLicense(tab)
 }
 </script>
 
@@ -229,7 +280,7 @@ function licenseNotBundled(kind: string): void {
         <section class="card content-card">
           <p class="card-title">外观</p>
           <p class="paragraph">
-            默认使用「晴空招手」。内置背景按右对齐显示；选择背景后点击“保存设置”生效。
+            默认使用「晴空招手」。内置背景按右对齐显示，自定义背景居中显示；选择或上传背景后点击“保存设置”生效。
           </p>
           <div class="background-grid" data-testid="background-list">
             <button
@@ -246,6 +297,18 @@ function licenseNotBundled(kind: string): void {
               <img class="background-thumb" :src="entry.src" :alt="entry.title" :data-testid="'thumbnail-' + entry.id" />
               <span class="background-choice__label">{{ entry.title }}</span>
             </button>
+            <button
+              v-if="customBackground"
+              class="background-choice"
+              :class="{ 'is-selected': customBackground }"
+              type="button"
+              data-testid="background-custom"
+              aria-pressed="true"
+              :disabled="saving"
+            >
+              <span class="background-thumb background-thumb--custom" :style="backgroundPreviewStyle" aria-hidden="true"></span>
+              <span class="background-choice__label">自定义背景</span>
+            </button>
           </div>
           <div class="form-field">
             <span class="field-label">自定义背景（本地图片）</span>
@@ -254,7 +317,7 @@ function licenseNotBundled(kind: string): void {
                 ref="fileInput"
                 class="sr-only"
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept="image/png,image/jpeg"
                 data-testid="background-file"
                 @change="onBackgroundFile"
               />
@@ -276,33 +339,81 @@ function licenseNotBundled(kind: string): void {
               >
                 <AppIcon name="refresh" :size="15" />使用默认背景
               </button>
-              <span class="small-muted">PNG / JPEG / WebP，≤ 20 MB。</span>
+              <span class="small-muted">PNG / JPEG，≤ 20 MB，尺寸 1–8192。</span>
             </div>
-            <p v-if="customBackground" class="form-hint" data-testid="custom-background-hint">
-              当前背景为自定义资源（{{ form.background }}）；上传接口未就绪时无法在浏览器中显示，可先改用内置背景。
+            <p v-if="customBackground && !customBackgroundDisplayable" class="form-hint" data-testid="custom-background-hint">
+              当前配置是旧版本地路径（{{ form.background }}），浏览器无法显示，已回退默认背景；请上传图片或选择内置背景。
+            </p>
+            <p v-else-if="customBackground" class="form-hint" data-testid="custom-background-hint">
+              当前使用自定义背景资源（{{ form.background }}）。
             </p>
             <p v-if="uploadNote" class="form-hint" data-testid="background-upload-note">{{ uploadNote }}</p>
           </div>
         </section>
 
-        <section class="card content-card">
-          <p class="card-title">关于 HDSL</p>
+        <section class="card content-card" data-testid="about-card">
+          <p class="card-title">关于 PCL-DSH-Linux</p>
           <div class="about-lines paragraph">
-            <p>界面改编自 Hello Minecraft! Launcher</p>
+            <p>界面改编自 Hello Minecraft! Launcher（HMCL）</p>
             <p>版权所有 © 2013-2026 huangyuhui 及贡献者</p>
-            <p>PCL-DSH-Linux {{ auth.version }} · Copyright (c) 2026 jiefing · GPLv3 或后续版本</p>
+            <p>HDSL 桌面版版权归 jiefing 及贡献者所有；PCL-DSH-Linux 保留上游可见版权，并以独立名称和版本区别于原版。</p>
+            <p>PCL-DSH-Linux {{ auth.version }} · Copyright (c) 2026 jiefing 及贡献者 · GPL-3.0-or-later（GNU GPL 第 3 版或后续版本）</p>
           </div>
-          <p class="paragraph">HDSL 保留上游可见版权，并以独立名称和版本区别于原版。</p>
           <div class="about-links">
-            <button class="btn btn-secondary btn--small" type="button" @click="licenseNotBundled('GPL 许可')">
+            <button class="btn btn-secondary btn--small" type="button" data-testid="license-gpl" @click="openLicense('gpl')">
               查看 GPL 许可
             </button>
-            <button class="btn btn-secondary btn--small" type="button" @click="licenseNotBundled('HMCL 附加条款')">
+            <button class="btn btn-secondary btn--small" type="button" data-testid="license-hmcl" @click="openLicense('hmcl')">
               HMCL 附加条款
             </button>
+            <a class="btn btn-subtle btn--small" href="/licenses/GPL-3.0.txt" target="_blank" rel="noopener noreferrer">
+              在新标签页打开 GPL 全文
+            </a>
           </div>
         </section>
       </template>
     </div>
+
+    <BaseModal
+      v-if="licenseTab"
+      :title="licenseTab === 'gpl' ? 'GNU General Public License' : 'HMCL 附加条款'"
+      testid="license-dialog"
+      wide
+      @close="licenseTab = null"
+    >
+      <div class="page-tabs" role="tablist" aria-label="许可">
+        <button
+          class="page-tab"
+          :class="{ 'is-active': licenseTab === 'gpl' }"
+          type="button"
+          role="tab"
+          :aria-selected="licenseTab === 'gpl'"
+          data-testid="license-tab-gpl"
+          @click="switchLicense('gpl')"
+        >
+          GPL 第 3 版
+        </button>
+        <button
+          class="page-tab"
+          :class="{ 'is-active': licenseTab === 'hmcl' }"
+          type="button"
+          role="tab"
+          :aria-selected="licenseTab === 'hmcl'"
+          data-testid="license-tab-hmcl"
+          @click="switchLicense('hmcl')"
+        >
+          HMCL 附加条款
+        </button>
+      </div>
+      <div v-if="licenseLoading" class="loading-row"><span class="spinner"></span>正在读取许可文本…</div>
+      <p v-else-if="licenseError" class="validation-error" data-testid="license-error">{{ licenseError }}</p>
+      <pre v-else class="license-text" data-testid="license-text">{{ licenseText }}</pre>
+      <template #footer>
+        <a class="btn btn-secondary btn--small" :href="LICENSE_FILES[licenseTab].url" target="_blank" rel="noopener noreferrer">
+          在新标签页打开
+        </a>
+        <button class="btn btn-primary" type="button" @click="licenseTab = null">关闭</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
