@@ -67,6 +67,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/health", "/api/auth/login", "/api/auth/logout", "/api/auth/me").permitAll()
                         .requestMatchers("/api/**").authenticated()
+                        // 工作台反代：使用本应用会话鉴权；实例/就绪校验在控制器内完成。
+                        .requestMatchers("/workbench/**").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
@@ -80,13 +82,26 @@ public class SecurityConfig {
         csrfFilter.setRequestHandler(new CsrfTokenRequestAttributeHandler());
         csrfFilter.setAccessDeniedHandler(accessDeniedHandler);
         csrfFilter.setRequireCsrfProtectionMatcher(request ->
-                CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request) && !isLoginRequest(request));
+                CsrfFilter.DEFAULT_CSRF_MATCHER.matches(request)
+                        && !isLoginRequest(request)
+                        // DSH 工作台自身的请求不带本应用 CSRF 头；其会话 Cookie 为 SameSite=Lax，
+                        // 跨站写请求不会携带会话，因此代理路径不叠加本应用 CSRF 校验。
+                        && !isWorkbenchRequest(request));
         http.addFilterAt(csrfFilter, CsrfFilter.class);
         // 让 SPA 在首个响应就拿到 XSRF-TOKEN Cookie（Spring Security 官方推荐做法）。
         http.addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class);
         // 首次登录强制改密：放在鉴权之后，保证匿名 401 仍由入口点处理。
         http.addFilterAfter(new PasswordChangeRequiredFilter(credentials, json), AuthorizationFilter.class);
         return http.build();
+    }
+
+    private static boolean isWorkbenchRequest(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
+            path = path.substring(contextPath.length());
+        }
+        return path.equals("/workbench") || path.startsWith("/workbench/");
     }
 
     private static boolean isLoginRequest(HttpServletRequest request) {

@@ -137,7 +137,7 @@ async function retryBackend(): Promise<void> {
         请输入管理员密码以继续。单用户系统不提供注册；忘记密码时请在服务器上使用重置命令。
       </p>
 
-      <div v-if="backendDown" class="login-error" role="alert">
+      <div v-if="backendDown" class="login-error" role="alert" data-testid="login-backend-error">
         <p>{{ auth.backendError }}</p>
         <div class="login-actions">
           <button class="btn btn-secondary btn--small" type="button" :disabled="busy" @click="retryBackend">
@@ -155,11 +155,12 @@ async function retryBackend(): Promise<void> {
             class="input"
             type="password"
             autocomplete="current-password"
+            data-testid="login-password"
             :disabled="busy"
           />
         </label>
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-        <button class="btn btn-primary btn--block" type="submit" :disabled="busy">
+        <p v-if="error" class="login-error" role="alert" data-testid="login-error">{{ error }}</p>
+        <button class="btn btn-primary btn--block" type="submit" data-testid="login-submit" :disabled="busy">
           {{ busy ? '正在登录…' : '登录' }}
         </button>
         <p class="login-note">
@@ -171,7 +172,7 @@ async function retryBackend(): Promise<void> {
         <p class="paragraph">首次登录需要修改初始密码，修改后使用新密码继续。</p>
         <label class="form-field">
           <span class="field-label">当前密码</span>
-          <input class="input" type="password" :value="password" disabled />
+          <input class="input" type="password" :value="password" disabled data-testid="login-current-password" />
         </label>
         <label class="form-field">
           <span class="field-label">新密码</span>
@@ -181,6 +182,7 @@ async function retryBackend(): Promise<void> {
             class="input"
             type="password"
             autocomplete="new-password"
+            data-testid="login-new-password"
             :disabled="busy"
           />
         </label>
@@ -191,11 +193,12 @@ async function retryBackend(): Promise<void> {
             class="input"
             type="password"
             autocomplete="new-password"
+            data-testid="login-confirm-password"
             :disabled="busy"
           />
         </label>
-        <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-        <button class="btn btn-primary btn--block" type="submit" :disabled="busy">
+        <p v-if="error" class="login-error" role="alert" data-testid="login-error">{{ error }}</p>
+        <button class="btn btn-primary btn--block" type="submit" data-testid="login-change-submit" :disabled="busy">
           {{ busy ? '正在保存…' : '修改密码并进入' }}
         </button>
       </form>

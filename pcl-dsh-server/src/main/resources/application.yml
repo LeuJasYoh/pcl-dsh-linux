@@ -37,3 +37,7 @@ pcl:
   job-timeout: 20m
   # 发布包只读 tools 目录；留空时自动从 jar 所在目录推断（current/tools）。
   tool-root: ""
+  # /workbench 工作台反向代理：关闭时 /api/instances/{id}/web-url 返回回环绝对地址（本机开发用）。
+  proxy-enabled: true
+  proxy-timeout: 60s
+  proxy-connect-timeout: 5s

@@ -44,6 +44,15 @@ public class PclProperties {
     /** 发布包只读 tools 目录（Node/pnpm）；留空时自动从 jar 所在目录推断，例如 /opt/pcl-dsh-linux/current/tools。 */
     private String toolRoot = "";
 
+    /** 是否启用 /workbench/{instanceId}/** 工作台反向代理（关闭时 web-url 返回回环绝对地址，供本机开发）。 */
+    private boolean proxyEnabled = true;
+
+    /** 反代普通请求等待上游响应头/首个字节的超时，默认 60 秒（SSE/WS 长连接不受此限制）。 */
+    private Duration proxyTimeout = Duration.ofSeconds(60);
+
+    /** 反代连接上游（127.0.0.1:实例端口）的建立超时，默认 5 秒。 */
+    private Duration proxyConnectTimeout = Duration.ofSeconds(5);
+
     public Path getDataRoot() {
         return dataRoot;
     }
@@ -122,5 +131,29 @@ public class PclProperties {
 
     public void setToolRoot(String toolRoot) {
         this.toolRoot = toolRoot;
+    }
+
+    public boolean isProxyEnabled() {
+        return proxyEnabled;
+    }
+
+    public void setProxyEnabled(boolean proxyEnabled) {
+        this.proxyEnabled = proxyEnabled;
+    }
+
+    public Duration getProxyTimeout() {
+        return proxyTimeout;
+    }
+
+    public void setProxyTimeout(Duration proxyTimeout) {
+        this.proxyTimeout = proxyTimeout;
+    }
+
+    public Duration getProxyConnectTimeout() {
+        return proxyConnectTimeout;
+    }
+
+    public void setProxyConnectTimeout(Duration proxyConnectTimeout) {
+        this.proxyConnectTimeout = proxyConnectTimeout;
     }
 }

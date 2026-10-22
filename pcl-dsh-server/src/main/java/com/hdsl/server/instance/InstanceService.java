@@ -12,6 +12,7 @@ import com.hdsl.runtime.RuntimeService;
 import com.hdsl.server.api.ApiDtos;
 import com.hdsl.server.api.ApiException;
 import com.hdsl.server.config.DataRoot;
+import com.hdsl.server.config.PclProperties;
 import com.hdsl.server.config.RuntimeProvider;
 import com.hdsl.server.job.JobManager;
 import com.hdsl.server.log.LogFiles;
@@ -87,6 +88,7 @@ public class InstanceService {
     private final AuditLog audit;
     private final LogFiles logs;
     private final StateAssembler state;
+    private final PclProperties properties;
 
     /** 运行中实例的账户 overlay（密钥只在内存；实例停止/关闭时清理临时文件）。 */
     private final Map<String, LaunchBinding> bindings = new ConcurrentHashMap<>();
@@ -96,7 +98,7 @@ public class InstanceService {
 
     public InstanceService(InstanceStore store, ProcessService processes, AccountService accounts,
                            RuntimeProvider runtimes, JobManager jobs, DataRoot data, AuditLog audit,
-                           LogFiles logs, StateAssembler state) {
+                           LogFiles logs, StateAssembler state, PclProperties properties) {
         this.store = store;
         this.processes = processes;
         this.accounts = accounts;
@@ -106,6 +108,7 @@ public class InstanceService {
         this.audit = audit;
         this.logs = logs;
         this.state = state;
+        this.properties = properties;
         this.processLog = line -> {
             logs.append(line);
             log.debug("{}", line);
@@ -441,6 +444,10 @@ public class InstanceService {
         }
         if (!"运行中".equals(processes.status(instance))) {
             throw ApiException.conflict(INSTANCE_NOT_READY, "网页服务尚未确认就绪，请等待启动完成或检查任务日志。");
+        }
+        if (properties.isProxyEnabled()) {
+            // 浏览器只访问 Nginx/本应用：由 /workbench 反代到实例回环端口（token/Cookie 由代理处理）。
+            return "/workbench/" + id + "/";
         }
         URI address = processes.webAddress(instance);
         return address.toString();

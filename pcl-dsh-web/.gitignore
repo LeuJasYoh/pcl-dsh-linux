@@ -1,0 +1,6 @@
+# Playwright E2E runtime data / reports (never commit)
+.e2e-data/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

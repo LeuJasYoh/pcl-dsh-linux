@@ -14,6 +14,51 @@ npm run preview    # 预览构建产物
 
 需要 Node.js >= 20.19（本机 Node 24 已验证）。
 
+## Playwright E2E（方案 §5.4 核心验收）
+
+E2E 默认自行拉起“一次性后端 + Vite”：后端用 `../pcl-dsh-server/target/pcl-dsh-linux.jar`
+配临时数据目录 `pcl-dsh-web/.e2e-data`（首次启动生成初始密码），测试完成后停止进程并删除数据目录，
+不会碰仓库里的 data/，也不需要手工启动服务。
+
+```bash
+npm install                    # 已含 @playwright/test
+npm run e2e:install            # 首次执行：下载 Chromium 到用户缓存（不入仓库）
+npm run e2e                    # 自动启动临时后端+Vite，跑全部用例，结束后清理
+npm run e2e -- --headed        # 观察模式（等价 npm run e2e:headed）
+npm run e2e:report             # 打开 HTML 报告（playwright-report/）
+```
+
+前置条件：JDK 21（`JAVA_HOME` 或 `D:/DevelopSoftware/Java/JDK-21`）与已构建的
+`pcl-dsh-server/target/pcl-dsh-linux.jar`（`scripts/mvn.ps1 -B -ntp package`）。
+
+需要手工控制服务或调试时：
+
+```powershell
+pwsh -File scripts/e2e-stack.ps1 start     # 打印初始密码、数据目录与日志位置
+pwsh -File scripts/e2e-stack.ps1 status
+pwsh -File scripts/e2e-stack.ps1 stop      # 停止并删除 .e2e-data（-KeepData 保留数据）
+$env:E2E_EXTERNAL_STACK=1; npm run e2e     # 复用已启动的 stack，测试结束不停止它
+```
+
+用例（Chromium、单 worker、登录态 storageState 复用）：
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `e2e/01-auth.spec.ts` | 未登录跳转 /login、错误密码提示、初始密码登录→强制改密→首页 |
+| `e2e/10-home-layout.spec.ts` | 40px 页头、200px 侧栏、7 个导航+当前实例、启动按钮 200x55、960x650 无横向溢出 |
+| `e2e/20-instances.spec.ts` | 创建实例校验（名称/版本/端口）、创建成功、选择当前实例、删除确认 |
+| `e2e/30-runtimes.spec.ts` | 运行时版本刷新、安装 202+SSE 任务/日志（路由 mock） |
+| `e2e/40-settings.spec.ts` | 代理/背景保存并落库、1.5s 轮询不覆盖未保存编辑 |
+| `e2e/50-logs.spec.ts` | tail、SSE 实时日志、复制回退、取消任务（202 mock） |
+| `e2e/60-about.spec.ts` | GPL 全文与 HMCL 附加条款弹窗 |
+| `e2e/70-copy-version.spec.ts` | 复制/改版本 202 Job 刷新选中、旧后端 409 回退只读 |
+
+失败时保留截图/trace（`test-results/`）与 HTML 报告（`playwright-report/`），二者均已在
+`pcl-dsh-web/.gitignore` 中忽略；`.e2e-data` 同样忽略，不要提交。
+
+> 注：`.e2e-data` 位于工程目录内，`vite.config.ts` 的 `server.watch.ignored` 已排除它
+> （Windows 上 Vite 的文件监视句柄会让后端“移入回收目录”的 rename 失败）。
+
 ## 结构
 
 ```
@@ -28,6 +73,9 @@ src/
   utils/        display/backgrounds/errors/validation/clipboard/jobs/download
   views/        Login/Home/Instances/Runtimes/Accounts/Plugins/Packs/Logs/Settings
   assets/       backgrounds/whale-01..05.webp、icons/hdsl.webp（由桌面版 PNG 转 WebP）
+e2e/            Playwright 核心验收用例、全局 setup/teardown 与 mock 辅助
+scripts/e2e-stack.ps1  一次性后端（临时数据目录）+ Vite 的启动/停止脚本
+playwright.config.ts   Chromium、单 worker、失败截图/trace、登录态项目依赖
 public/licenses/ GPL-3.0.txt、HMCL-ADDITIONAL-TERMS.md（关于页弹窗读取）
 public/favicon.webp 网站图标（由 hdsl.webp 复制）
 ```

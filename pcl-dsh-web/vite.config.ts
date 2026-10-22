@@ -16,6 +16,11 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: false,
+    // E2E data lives inside the project; watching it on Windows keeps directory
+    // handles that make backend trash moves (rename) fail with a sharing violation.
+    watch: {
+      ignored: ['**/.e2e-data/**', '**/test-results/**', '**/playwright-report/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',
