@@ -81,7 +81,9 @@ class JobManagerTest {
             }
         });
         JobManager.View cancelling = jobs.cancel(running.id());
-        assertEquals(JobManager.State.RUNNING, cancelling.state());
+        // cancel() 返回时工作线程可能已经完成收尾，接受 RUNNING 或已进入终态 CANCELLED。
+        assertTrue(cancelling.state() == JobManager.State.RUNNING
+                || cancelling.state() == JobManager.State.CANCELLED);
         JobManager.View terminal = awaitState(running.id(), JobManager.State.CANCELLED);
         assertNotNull(terminal.finishedAt());
         assertEquals("已取消", terminal.phase());

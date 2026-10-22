@@ -54,6 +54,16 @@ public class ApiException extends RuntimeException {
         return new ApiException("INTERNAL", HttpStatus.INTERNAL_SERVER_ERROR, message);
     }
 
+    /** 409：带稳定 code 的业务冲突（如运行中实例、运行时被引用、增量未支持等）。 */
+    public static ApiException conflict(String code, String message) {
+        return new ApiException(code, HttpStatus.CONFLICT, message);
+    }
+
+    /** 502/504：上游（npm registry / 代理）查询失败，消息保持中文可操作。 */
+    public static ApiException upstream(String code, HttpStatus status, String message) {
+        return new ApiException(code, status, message);
+    }
+
     public static ApiException locked(String message, long retryAfterSeconds) {
         return new ApiException("LOGIN_LOCKED", HttpStatus.LOCKED, message,
                 Map.of("retryAfterSeconds", Math.max(1, retryAfterSeconds)));

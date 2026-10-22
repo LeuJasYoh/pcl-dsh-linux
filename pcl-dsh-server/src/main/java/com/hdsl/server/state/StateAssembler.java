@@ -9,6 +9,7 @@ import com.hdsl.server.api.ApiDtos;
 import com.hdsl.server.config.PclProperties;
 import com.hdsl.server.config.RuntimeProvider;
 import com.hdsl.server.job.JobManager;
+import com.hdsl.server.runtime.RuntimeCompatibility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -38,15 +39,18 @@ public class StateAssembler {
     private final RuntimeProvider runtimes;
     private final JobManager jobs;
     private final PclProperties properties;
+    private final RuntimeCompatibility compatibility;
 
     public StateAssembler(InstanceStore store, ProcessService processes, AccountService accounts,
-                          RuntimeProvider runtimes, JobManager jobs, PclProperties properties) {
+                          RuntimeProvider runtimes, JobManager jobs, PclProperties properties,
+                          RuntimeCompatibility compatibility) {
         this.store = store;
         this.processes = processes;
         this.accounts = accounts;
         this.runtimes = runtimes;
         this.jobs = jobs;
         this.properties = properties;
+        this.compatibility = compatibility;
     }
 
     public ApiDtos.StateDto state() {
@@ -74,16 +78,21 @@ public class StateAssembler {
         List<Instance> rows = store.list();
         List<ApiDtos.InstanceDto> result = new ArrayList<>(rows.size());
         for (Instance instance : rows) {
-            result.add(new ApiDtos.InstanceDto(instance.id(), instance.name(), instance.runtimeVersion(),
-                    instance.profile(), instance.port(), processes.status(instance),
-                    store.directory(instance).toString(), profiles(instance), instance.accountId()));
+            result.add(instance(instance));
         }
         return List.copyOf(result);
     }
 
+    /** 单个实例的 DTO（实例写接口复用，保证与列表字段完全一致）。 */
+    public ApiDtos.InstanceDto instance(Instance instance) {
+        return new ApiDtos.InstanceDto(instance.id(), instance.name(), instance.runtimeVersion(),
+                instance.profile(), instance.port(), processes.status(instance),
+                store.directory(instance).toString(), profiles(instance), instance.accountId());
+    }
+
     public List<ApiDtos.RuntimeDto> runtimes() throws IOException {
         return runtimes.get().installedVersions().stream()
-                .map(version -> new ApiDtos.RuntimeDto(version, true, "待检测"))
+                .map(version -> new ApiDtos.RuntimeDto(version, true, compatibility.get(version)))
                 .toList();
     }
 

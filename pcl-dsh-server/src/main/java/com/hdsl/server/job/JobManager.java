@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hdsl.server.api.ApiException;
 import com.hdsl.server.config.PclProperties;
+import com.hdsl.server.log.LogFiles;
 import com.hdsl.server.util.LogSanitizer;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -89,14 +90,16 @@ public class JobManager {
 
     private final ObjectMapper json;
     private final PclProperties properties;
+    private final LogFiles logs;
     private final AtomicReference<Job> active = new AtomicReference<>();
     private final Map<String, Job> jobs = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService scheduler;
 
-    public JobManager(ObjectMapper json, PclProperties properties) {
+    public JobManager(ObjectMapper json, PclProperties properties, LogFiles logs) {
         this.json = json;
         this.properties = properties;
+        this.logs = logs;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "pcl-job-watchdog");
             thread.setDaemon(true);
@@ -123,6 +126,7 @@ public class JobManager {
             synchronized (job) {
                 emitStateLocked(job, "任务已提交，开始执行。");
             }
+            logs.append("任务开始：" + job.type + "（" + job.id + "）");
             job.runner = Thread.ofVirtual().name("pcl-job-" + job.id).unstarted(() -> execute(job, task));
             Duration effective = timeout == null || timeout.isZero() || timeout.isNegative()
                     ? properties.getJobTimeout() : timeout;
@@ -291,6 +295,7 @@ public class JobManager {
         }
         if (finished) {
             log.info("任务完成：{}（{}）", job.id, job.type);
+            logs.append("任务完成：" + job.id + "（" + job.type + "）");
         }
     }
 
@@ -317,6 +322,7 @@ public class JobManager {
         }
         if (finished) {
             log.warn("任务失败：{}（{}）{}", job.id, job.type, message);
+            logs.append("任务失败：" + job.id + "（" + job.type + "）：" + message);
         }
     }
 
@@ -332,6 +338,7 @@ public class JobManager {
             completeEmittersLocked(job);
         }
         log.info("任务已取消：{}（{}）", job.id, job.type);
+        logs.append("任务已取消：" + job.id + "（" + job.type + "）");
     }
 
     private void finishTimeout(Job job) {
@@ -354,6 +361,7 @@ public class JobManager {
             completeEmittersLocked(job);
         }
         log.warn("任务超时：{}（{}）", job.id, job.type);
+        logs.append("任务超时：" + job.id + "（" + job.type + "）");
     }
 
     private void onTimeout(Job job) {
@@ -552,6 +560,8 @@ public class JobManager {
             synchronized (job) {
                 emitLogLocked(job, safe, "info");
             }
+            // 任务日志同时落盘（data/logs/launcher-日期.log），供 /api/logs/tail 读取；写入前已脱敏。
+            logs.append(safe);
         }
 
         @Override

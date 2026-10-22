@@ -64,4 +64,66 @@ public final class ApiDtos {
             availableVersions = availableVersions == null ? List.of() : List.copyOf(availableVersions);
         }
     }
+
+    // ---------------------------------------------------------------- 实例写接口（M1 第二增量）
+
+    /** POST /api/instances。port 为空 / "0" 表示自动分配；accountId 可为空。 */
+    public record CreateInstanceRequest(String name, String version, String profile, String port, String accountId) {
+    }
+
+    /**
+     * PUT /api/instances/{id}。本增量只应用 name / port / accountId；
+     * version / profile 仅允许省略或与现值相同，变更时返回 409（下个增量提供）。
+     */
+    public record UpdateInstanceRequest(String name, String version, String profile, String port, String accountId) {
+    }
+
+    /** PUT /api/instances/{id}/account；空串表示解除绑定。 */
+    public record AccountBindingRequest(String accountId) {
+    }
+
+    /** DELETE 类接口返回：被移入回收目录的绝对路径，空串表示原目录不存在。 */
+    public record TrashedDto(String trashedPath) {
+        public TrashedDto {
+            trashedPath = trashedPath == null ? "" : trashedPath;
+        }
+    }
+
+    /** GET /api/instances/{id}/web-url。 */
+    public record WebUrlDto(String url) {
+    }
+
+    /** LAUNCH_INSTANCE 任务成功结果。 */
+    public record LaunchResultDto(String instanceId, String webUrl) {
+    }
+
+    // ---------------------------------------------------------------- 运行时任务（M1 第二增量）
+
+    /** GET /api/runtimes/available。 */
+    public record AvailableVersionsDto(List<String> versions) {
+        public AvailableVersionsDto {
+            versions = versions == null ? List.of() : List.copyOf(versions);
+        }
+    }
+
+    /** POST /api/runtimes。 */
+    public record RuntimeInstallRequest(String version) {
+    }
+
+    /** INSTALL_RUNTIME 任务成功结果。 */
+    public record RuntimeInstallResultDto(String version, boolean installed, String compatibility) {
+    }
+
+    /** PROBE_RUNTIME 任务成功结果。 */
+    public record RuntimeProbeResultDto(String version, String compatibility) {
+    }
+
+    // ---------------------------------------------------------------- 日志（M1 第二增量）
+
+    /** GET /api/logs/tail：已脱敏的单行文本（行内自带时间前缀）。 */
+    public record LogTailDto(List<String> lines) {
+        public LogTailDto {
+            lines = lines == null ? List.of() : List.copyOf(lines);
+        }
+    }
 }
