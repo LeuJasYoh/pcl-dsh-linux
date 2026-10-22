@@ -1,0 +1,24 @@
+[Unit]
+Description=PCL-DSH-Linux 0.3.0 WebUI (DeepSeek Harness launcher)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pcl-dsh
+Group=pcl-dsh
+WorkingDirectory=/opt/pcl-dsh-linux/current
+Environment=PCL_DSH_DATA=/opt/pcl-dsh-linux/data
+ExecStart=/usr/bin/java -Xms128m -Xmx384m -XX:MaxMetaspaceSize=160m -XX:+ExitOnOutOfMemoryError -jar /opt/pcl-dsh-linux/current/pcl-dsh-linux.jar --server.address=127.0.0.1 --server.port=8080 --pcl.data-root=/opt/pcl-dsh-linux/data --pcl.tool-root=/opt/pcl-dsh-linux/current/tools
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=40
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/pcl-dsh-linux/data
+
+[Install]
+WantedBy=multi-user.target
