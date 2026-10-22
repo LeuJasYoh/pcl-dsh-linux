@@ -3,6 +3,10 @@
 - **文档版本**：v1.0（草案，待你确认后进入实施）
 - **项目命名**：产品名 **PCL-DSH-Linux**（目录同名）；为降低迁移差异，复用代码的 Java 包名保留 com.hdsl.*（不影响 GPL 对修改版本的名称区分要求）。
 - **日期**：2026-10-22
+- **实施状态（2026-10-22）**：
+  - 基线提交 f678561：Maven 多模块骨架、core 业务代码迁移（21 个类）、LinuxSecretProtector、Spring Boot 启动类与 /api/health。
+  - 并行开发中：pcl-dsh-server（配置/认证/Job/REST）、pcl-dsh-core（测试迁移与工具根适配）、pcl-dsh-web（Vue 外壳/登录/首页）。
+  - M0 服务器 PoC 手册：docs/M0_POC_RUNBOOK.md（按批次执行，等待你贴回结果）。
 - **依据**：①《HDSL → Linux WebUI 移植可行性分析报告》（D:/Projects/DSHL/PCL-DSH-Linux/docs/PORTING_ANALYSIS.md）；② 2026-10-22 方案问答 Q1–Q18 的最终决策；③ HDSL 0.2.0 参考源码（D:/Projects/DSHL/HDSL）。
 - **当前状态**：**仅方案文档，不含实现代码**。你确认本文档后，才按第 9 节的里程碑开始编码。
 - **目标环境**：阿里云 ECS，Ubuntu 24.04.4 LTS x86_64，2 vCPU / 1.6 GiB 内存 / 40 GB 磁盘 / 2 GiB swap；公网 IPv4 39.107.255.118；HTTP 80 入口。
@@ -240,7 +244,7 @@ PCL-DSH-Linux/
 | 新增 spring-boot-starter-test、@playwright/test（前端） | 测试 |
 | 不引入数据库 | 继续使用 JSON 文件 + 文件锁，降低部署复杂度 |
 
-- Spring Boot 版本：实施首日锁定为当时的 3.x 稳定版（Java 21 兼容），并在 README 记录确切版本；Maven 3.9.x 由构建脚本下载到工作区。
+- Spring Boot 版本：**3.5.16**（2026-10-22 锁定，Java 21 兼容，Spring Boot 3.x 维护线）。Maven 使用本机 3.9.9，由 scripts/mvn.ps1 显式设置 JAVA_HOME/PATH，不额外下载 Maven。
 - HTTP 客户端：优先使用 JDK HttpClient（现有代码已在用）实现 DSH 反代与下载；WebSocket 代理在 M0 验证后确定实现方式（见 §4.6 与风险 R2）。
 
 ### 3.4 前端工程结构
