@@ -1,6 +1,6 @@
 # DSH 工作台反向代理设计（草稿，待 M0 结果定稿）
 
-> 状态：设计草稿。M0 服务器 PoC（docs/M0_POC_RUNBOOK.md 批次 3/4）返回 token/Cookie/WebSocket/绝对地址的真实行为后，再确定实现细节并进入编码。
+> 状态：**M0 已在 WSL 完成（见 docs/M0_RESULTS.md）**，token/Cookie/相对路径/WS/SSE 行为已确认，进入实现。
 > 目标：浏览器只访问 Nginx 80，工作台路径 /workbench/{instanceId}/ 由 Spring Boot 反代到 127.0.0.1:<实例端口>，且必须登录。
 
 ## 1. 已知事实与待验证项
