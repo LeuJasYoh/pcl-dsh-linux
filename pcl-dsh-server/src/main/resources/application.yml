@@ -1,0 +1,13 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+spring:
+  application:
+    name: pcl-dsh-linux
+  servlet:
+    multipart:
+      max-file-size: 2048MB
+      max-request-size: 2048MB
+logging:
+  level:
+    root: INFO
