@@ -73,7 +73,13 @@ if command -v nginx >/dev/null 2>&1; then
     echo "已启用来源 IP 白名单：$ALLOW_IP"
   fi
   nginx -t
-  systemctl reload nginx
+  # nginx 可能已安装但未运行（例如手工停止过）：先确保运行，再 reload 生效。
+  if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+  else
+    systemctl enable --now nginx
+    systemctl reload nginx || true
+  fi
 else
   echo "未安装 Nginx。请先执行：apt update && apt install -y nginx"
   echo "安装 Nginx 后重新运行本脚本即可完成站点配置（不会重复安装版本）。"
