@@ -9,7 +9,15 @@ PCL-DSH-Linux 是 [HDSL](https://github.com/jiefing/HDSL) 桌面版的 Linux Web
 
 ## 当前状态
 
-M1 起步阶段：已建立 Maven 多模块骨架并迁入可复用的 core 业务代码；Web 层与前端仍在开发中。方案见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)。
+M1 起步阶段：Maven 多模块骨架、core 业务代码迁移（含 104 项回归测试）、Server 首个可运行增量（密码登录/强制改密/会话与 CSRF/Job+SSE/基础 REST）、Vue 前端外壳（登录页/首页/实例页骨架/设置页）均已完成；Web 层与前端交互仍在持续开发。方案见 [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)，M0 服务器 PoC 手册见 [docs/M0_POC_RUNBOOK.md](docs/M0_POC_RUNBOOK.md)。
+
+## 当前进度（2026-10-22）
+
+- 基线：多模块工程、core 业务代码迁移、LinuxSecretProtector、Spring Boot 启动类。
+- core：104 项测试迁移并通过；RuntimeService 支持发布包只读工具根 + 可写 shim 目录；ProcessService 增加 runningIds()。
+- server：密码登录 + 首次登录强制改密 + 会话/CSRF/登录限流/审计；JobManager 单任务 409、取消/超时、SSE 事件流；/api/health、/api/auth/*、/api/state、/api/instances、/api/runtimes、/api/settings；可执行 jar 冒烟通过（health/401/登录/强制改密）。
+- web：Vue 3 + TS + Vite + Pinia 工程；AppShell/40px 页头/200px 侧栏/登录页/首页启动区/实例页/设置页/占位页；npm run build 通过。
+- 下一步：M0 服务器 PoC（等待执行结果）、实例 CRUD/启停、运行时安装任务、前端交互补齐、DSH 反代。
 
 ## 工程结构
 

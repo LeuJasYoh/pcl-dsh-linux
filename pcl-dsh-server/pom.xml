@@ -13,6 +13,11 @@
   <artifactId>pcl-dsh-server</artifactId>
   <name>PCL-DSH-Linux Server</name>
 
+  <properties>
+    <!-- Spring MVC 需要方法参数名（@PathVariable/@RequestParam 省略名称时） -->
+    <maven.compiler.parameters>true</maven.compiler.parameters>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.pcl.dsh</groupId>
@@ -53,6 +58,13 @@
         <configuration>
           <mainClass>com.hdsl.server.PclDshLinuxApplication</mainClass>
         </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
