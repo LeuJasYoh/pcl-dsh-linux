@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,6 +43,15 @@ class AccountServiceTest {
         encrypted[encrypted.length-1]^=1;
         IOException error=assertThrows(IOException.class,()->protector.unprotect(encrypted));
         assertFalse(error.getMessage().contains(FAKE_KEY));
+    }
+
+    @Test void createsMasterKeyFileWithOwnerOnlyPermissionsOnPosix() throws Exception {
+        Assumptions.assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"), "POSIX permissions required");
+        Assumptions.assumeTrue(System.getenv(LinuxSecretProtector.ENV_KEY)==null, "explicit master-key env would bypass the key file");
+        new AccountService(root).save("","posix-key","deepseek-official","","test-model",FAKE_KEY);
+        Path key=root.resolve("config/secret.key");
+        assertTrue(Files.isRegularFile(key));
+        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(key)));
     }
 
     @Test void corruptMasterKeyFailsClosedWithExplicitMessage() throws Exception {

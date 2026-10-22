@@ -54,3 +54,17 @@
 - **SSE 经 Nginx**：登录后启动实例，连接 /api/jobs/{id}/events 立即收到 state/log 事件（未被 Nginx 缓冲），任务最终 SUCCEEDED。
 - **来源 IP 头**：Nginx 模板改为覆盖式 X-Forwarded-For（$remote_addr），避免客户端伪造；后端 ClientIp 仅在回环代理时信任该头。
 - **自动化测试现状**：core 104 + server 77 + 前端 Playwright E2E 11 全部通过；npm run build 通过。
+
+## 8. 账户注入与整合包真实链路（2026-10-22）
+
+在 WSL 已安装部署（systemd + Nginx + DSH 0.2.1-rc.2）上通过 API 与真实运行实验证：
+
+- **账户注入**：创建 deepseek-official 账户（测试用假 Key）→ 绑定实例 → LAUNCH_INSTANCE Job **SUCCEEDED**，说明 AccountOverlay/LaunchBinding 在当前 DSH 版本上成功生成并校验 overlay；随后解绑、删除账户成功。
+- **整合包往返**：导出当前 profile → `.dspack`（约 1.4 KB）→ `/api/artifacts` 下载 → `/api/packs/preview` 校验 → `/api/packs/import` Job **SUCCEEDED**，创建新实例并可删除。
+- 这两个链路覆盖了 M3 的账户与整合包核心能力，且全部复用 core 业务代码在 Linux 上运行。
+
+### 本阶段发现并修复的 Linux 专属问题
+
+1. **LinuxSecretProtector 首次生成主密钥失败**（500）：临时文件权限设置后、文件尚未 move 到 secret.key 时就对其 setPosixFilePermissions，Linux 上抛 NoSuchFileException；已修复并新增 POSIX 回归测试（Windows 跳过）。
+2. **启动自检误报 Node/pnpm 缺失**：StartupChecks/ToolLocator 未查找发布包只读 tools；已改为 发布包 tools → data/tools → PATH，并在 systemd 下实测正确识别。
+3. 说明：此前 WSL 部署验证中“账户创建 500”由上述 1 导致；修复后账户链路通过。

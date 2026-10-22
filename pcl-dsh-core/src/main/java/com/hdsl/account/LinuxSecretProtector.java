@@ -122,7 +122,6 @@ final class LinuxSecretProtector implements SecretProtector {
                     StandardOpenOption.TRUNCATE_EXISTING);
             try {
                 Files.setPosixFilePermissions(temp, PosixFilePermissions.fromString("rw-------"));
-                Files.setPosixFilePermissions(keyFile, PosixFilePermissions.fromString("rw-------"));
             } catch (UnsupportedOperationException ignored) {
                 // Windows or non-POSIX file system: permissions are best effort.
             }

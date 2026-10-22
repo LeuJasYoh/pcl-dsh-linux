@@ -14,30 +14,31 @@ final class ToolLocator {
     private ToolLocator() {
     }
 
-    static Optional<Path> findNode(Path dataRoot) {
-        Path tools = dataRoot.resolve("tools");
-        for (Path candidate : new Path[]{
-                tools.resolve("node/node.exe"),
-                tools.resolve("node/bin/node"),
-                tools.resolve("node/node")}) {
-            if (Files.isRegularFile(candidate)) {
-                return Optional.of(candidate);
-            }
-        }
-        return onPath("node.exe", "node");
+    static Optional<Path> findNode(Path dataRoot, Path releaseTools) {
+        Optional<Path> fromTools = findInToolRoots(releaseTools, dataRoot.resolve("tools"),
+                "node/node.exe", "node/bin/node", "node/node");
+        return fromTools.isPresent() ? fromTools : onPath("node.exe", "node");
     }
 
-    static Optional<Path> findPnpm(Path dataRoot) {
-        Path tools = dataRoot.resolve("tools");
-        for (Path candidate : new Path[]{
-                tools.resolve("pnpm/bin/pnpm.cjs"),
-                tools.resolve("pnpm/node_modules/pnpm/bin/pnpm.cjs"),
-                tools.resolve("node/node_modules/pnpm/bin/pnpm.cjs")}) {
-            if (Files.isRegularFile(candidate)) {
-                return Optional.of(candidate);
+    static Optional<Path> findPnpm(Path dataRoot, Path releaseTools) {
+        Optional<Path> fromTools = findInToolRoots(releaseTools, dataRoot.resolve("tools"),
+                "pnpm/bin/pnpm.cjs", "pnpm/node_modules/pnpm/bin/pnpm.cjs", "node/node_modules/pnpm/bin/pnpm.cjs");
+        return fromTools.isPresent() ? fromTools : onPath("pnpm.cmd", "pnpm");
+    }
+
+    private static Optional<Path> findInToolRoots(Path releaseTools, Path dataTools, String... candidates) {
+        for (Path root : new Path[]{releaseTools, dataTools}) {
+            if (root == null) {
+                continue;
+            }
+            for (String relative : candidates) {
+                Path candidate = root.resolve(relative);
+                if (Files.isRegularFile(candidate)) {
+                    return Optional.of(candidate);
+                }
             }
         }
-        return onPath("pnpm.cmd", "pnpm");
+        return Optional.empty();
     }
 
     private static Optional<Path> onPath(String... names) {
