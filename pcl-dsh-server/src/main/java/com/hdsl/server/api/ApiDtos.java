@@ -126,4 +126,91 @@ public final class ApiDtos {
             lines = lines == null ? List.of() : List.copyOf(lines);
         }
     }
+
+    // ---------------------------------------------------------------- 账户（M1 第三增量）
+
+    /** GET /api/accounts/providers：账户提供商预设（不含密钥）。 */
+    public record ProviderDto(String id, String name, String baseUrl, String model) {
+        public ProviderDto {
+            baseUrl = baseUrl == null ? "" : baseUrl;
+            model = model == null ? "" : model;
+        }
+    }
+
+    /** POST/PUT /api/accounts；apiKey 为空表示编辑时保留原密钥（新建时必须提供）。 */
+    public record AccountSaveRequest(String name, String provider, String baseUrl, String model, String apiKey) {
+    }
+
+    public record AccountDeletedDto(String id) {
+    }
+
+    // ---------------------------------------------------------------- 插件（M1 第三增量）
+
+    /** GET /api/instances/{id}/plugins（字段与桌面版 UiState.PluginItem 一致）。 */
+    public record PluginDto(String name, String version, String description, String source) {
+        public PluginDto {
+            name = name == null ? "" : name;
+            version = version == null ? "" : version;
+            description = description == null ? "" : description;
+            source = source == null ? "" : source;
+        }
+    }
+
+    /** POST /api/instances/{id}/plugins：npm 包名/坐标。 */
+    public record PluginMutationRequest(String spec) {
+    }
+
+    // ---------------------------------------------------------------- 插件目录（M1 第三增量）
+
+    public record PluginCatalogEntryDto(String repo, String name, String description, int stars,
+                                        String url, String spec, String status) {
+        public PluginCatalogEntryDto {
+            repo = repo == null ? "" : repo;
+            name = name == null ? "" : name;
+            description = description == null ? "" : description;
+            url = url == null ? "" : url;
+            spec = spec == null ? "" : spec;
+            status = status == null ? "" : status;
+        }
+    }
+
+    /** GET /api/plugin-catalog（字段与桌面版 UiState.PluginCatalog 对齐）。 */
+    public record PluginCatalogDto(List<PluginCatalogEntryDto> entries, long total, int page,
+                                   boolean hasNext, boolean fromCache, String warning) {
+        public PluginCatalogDto {
+            entries = entries == null ? List.of() : List.copyOf(entries);
+            warning = warning == null ? "" : warning;
+        }
+    }
+
+    public record InstallTargetDto(String name, String version, String spec, String packagePath,
+                                   String evidenceUrl) {
+        public InstallTargetDto {
+            name = name == null ? "" : name;
+            version = version == null ? "" : version;
+            spec = spec == null ? "" : spec;
+            packagePath = packagePath == null ? "" : packagePath;
+            evidenceUrl = evidenceUrl == null ? "" : evidenceUrl;
+        }
+    }
+
+    /** GET /api/plugin-catalog/{owner}/{repo}。 */
+    public record PluginDetailsDto(String repo, String status, String message, boolean fromCache,
+                                   List<InstallTargetDto> targets) {
+        public PluginDetailsDto {
+            repo = repo == null ? "" : repo;
+            status = status == null ? "" : status;
+            message = message == null ? "" : message;
+            targets = targets == null ? List.of() : List.copyOf(targets);
+        }
+    }
+
+    // ---------------------------------------------------------------- 背景资源（M1 第三增量）
+
+    /** POST /api/settings/background：返回可直接写入 settings.background 的资源地址。 */
+    public record BackgroundDto(String background) {
+        public BackgroundDto {
+            background = background == null ? "" : background;
+        }
+    }
 }

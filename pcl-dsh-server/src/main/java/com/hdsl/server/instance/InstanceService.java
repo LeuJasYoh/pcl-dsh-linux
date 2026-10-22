@@ -403,6 +403,18 @@ public class InstanceService {
         return new ApiDtos.LaunchResultDto(instance.id(), address.toString());
     }
 
+    // ------------------------------------------------------------------ 子资源复用
+
+    /** 供插件等子资源接口复用：校验 ID 并返回实例（格式非法 400、不存在 404）。 */
+    public Instance requireInstance(String id) {
+        return require(id);
+    }
+
+    /** 供插件等写操作复用：实例必须已停止且端口可确认安全（运行中/端口占用时 409）。 */
+    public void ensureStoppedForMutation(Instance instance) {
+        ensureStopped(instance);
+    }
+
     // ------------------------------------------------------------------ 内部工具
 
     private Instance require(String id) {

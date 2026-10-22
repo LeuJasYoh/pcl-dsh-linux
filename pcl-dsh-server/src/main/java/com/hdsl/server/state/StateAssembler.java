@@ -100,10 +100,15 @@ public class StateAssembler {
         List<AccountEntry> rows = accounts.list();
         List<ApiDtos.AccountDto> result = new ArrayList<>(rows.size());
         for (AccountEntry entry : rows) {
-            result.add(new ApiDtos.AccountDto(entry.id(), entry.name(), entry.provider(), entry.baseUrl(),
-                    entry.model(), entry.hasKey(), entry.status()));
+            result.add(account(entry));
         }
         return List.copyOf(result);
+    }
+
+    /** 单个账户的 DTO（账户写接口复用，保证与列表字段完全一致）。 */
+    public ApiDtos.AccountDto account(AccountEntry entry) {
+        return new ApiDtos.AccountDto(entry.id(), entry.name(), entry.provider(), entry.baseUrl(),
+                entry.model(), entry.hasKey(), entry.status());
     }
 
     public ApiDtos.SettingsDto settings() {
