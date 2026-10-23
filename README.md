@@ -24,4 +24,4 @@ M1–M4 的开发、测试、打包与 Linux 端到端验收已完成，发布�
 - 工作台反代设计：docs/DSH_WORKBENCH_PROXY.md
 - Linux PoC 与部署验收记录：docs/M0_RESULTS.md、docs/DEPLOYMENT_VALIDATION.md
 - 远程账号登录限制与直连登录：docs/REMOTE_ACCOUNT_LOGIN.md
-- 开发与测试：docs/DEVELOPMENT.md；发布说明：docs/RELEASE_NOTES_0.3.1.md（历史：docs/RELEASE_NOTES_0.3.0.md）
+- 开发与测试：docs/DEVELOPMENT.md；发布说明：docs/RELEASE_NOTES_0.3.2.md（历史：0.3.1、0.3.0）

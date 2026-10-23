@@ -27,7 +27,7 @@ logging:
     root: INFO
 pcl:
   data-root: ${PCL_DSH_DATA:${pcl.data:./data}}
-  version: 0.3.1
+  version: 0.3.2
   session-timeout: 12h
   sse-heartbeat: 15s
   sse-timeout: 30m

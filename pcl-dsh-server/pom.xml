@@ -7,7 +7,7 @@
   <parent>
     <groupId>com.pcl.dsh</groupId>
     <artifactId>pcl-dsh-parent</artifactId>
-    <version>0.3.1</version>
+    <version>0.3.2</version>
   </parent>
 
   <artifactId>pcl-dsh-server</artifactId>
@@ -22,7 +22,7 @@
     <dependency>
       <groupId>com.pcl.dsh</groupId>
       <artifactId>pcl-dsh-core</artifactId>
-      <version>0.3.1</version>
+      <version>0.3.2</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

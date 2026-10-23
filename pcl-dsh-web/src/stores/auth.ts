@@ -9,7 +9,7 @@ export const useAuthStore = defineStore('auth', () => {
   const authenticated = ref(false)
   const checked = ref(false)
   const loading = ref(false)
-  const version = ref('0.3.1')
+  const version = ref('0.3.2')
   const initialPasswordPending = ref(false)
   const csrfToken = ref<string | null>(null)
   const backendError = ref<string | null>(null)
