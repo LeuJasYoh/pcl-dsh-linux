@@ -97,6 +97,32 @@ public final class ApiDtos {
     public record WebUrlDto(String url) {
     }
 
+    /**
+     * GET /api/instances/{id}/direct-access：远程完成账号网页登录所需的直连信息。
+     *
+     * <p>DSH 的 DeepSeek 账号 OAuth 回调只接受回环地址（127.0.0.1/localhost），远程访问时
+     * 必须借助 SSH 隧道在本机浏览器打开回环直连地址完成登录；登录凭据保存在服务器实例目录，
+     * 之后仍通过正常工作台（/workbench/）访问。</p>
+     *
+     * @param ready        实例是否运行且网页服务就绪
+     * @param port         实例回环端口
+     * @param directUrl    回环直连地址（含一次性 token；未就绪或无 token 时为 null）
+     * @param tunnelCommand 可直接复制执行的 SSH 隧道命令
+     * @param sshHost      从当前请求推断的服务器地址（用于隧道命令）
+     * @param sshUser      隧道命令使用的登录用户
+     * @param note         使用说明/失败原因
+     */
+    public record DirectAccessDto(boolean ready, int port, String directUrl, String tunnelCommand,
+                                  String sshHost, String sshUser, String note) {
+        public DirectAccessDto {
+            directUrl = directUrl == null ? null : directUrl;
+            tunnelCommand = tunnelCommand == null ? "" : tunnelCommand;
+            sshHost = sshHost == null ? "" : sshHost;
+            sshUser = sshUser == null ? "root" : sshUser;
+            note = note == null ? "" : note;
+        }
+    }
+
     /** LAUNCH_INSTANCE 任务成功结果。 */
     public record LaunchResultDto(String instanceId, String webUrl) {
     }

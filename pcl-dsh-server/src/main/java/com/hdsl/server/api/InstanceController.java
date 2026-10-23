@@ -97,6 +97,17 @@ public class InstanceController {
         return new ApiDtos.WebUrlDto(instances.webUrl(id));
     }
 
+    /**
+     * 远程账号网页登录所需的直连信息：回环直连地址（含一次性 token）与 SSH 隧道命令。
+     *
+     * <p>上游 DSH 的 DeepSeek 账号 OAuth 回调仅接受回环地址；远程部署时需按此提示建立
+     * SSH 隧道，在本机浏览器打开直连地址完成一次登录，凭据保存在服务器实例目录。</p>
+     */
+    @GetMapping("/{id}/direct-access")
+    public ApiDtos.DirectAccessDto directAccess(@PathVariable("id") String id, HttpServletRequest request) {
+        return instances.directAccess(id, request.getServerName());
+    }
+
     /** 202 + JobManager.View（body.id 为 jobId；type=LAUNCH_INSTANCE；成功 result={instanceId,webUrl}）。 */
     @PostMapping("/{id}/launch")
     public ResponseEntity<JobManager.View> launch(@PathVariable("id") String id, HttpServletRequest request) {

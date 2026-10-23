@@ -13,14 +13,15 @@ PCL-DSH-Linux 是 [HDSL](https://github.com/jiefing/HDSL) 桌面版的 Linux Web
 
 M1–M4 的开发、测试、打包与 Linux 端到端验收已完成，发布包可部署：
 
-- 后端（pcl-dsh-server）：密码登录/强制改密/会话+CSRF/审计、实例 CRUD/启停/复制/改版本、运行时安装探测删除、账户 CRUD 与启动注入、插件与目录、整合包预览/导入/导出、Job+SSE、DSH 工作台反代（HTTP/SSE/WebSocket）；**core 105 + server 77 测试通过**。
+- 后端（pcl-dsh-server）：密码登录/强制改密/会话+CSRF/审计、实例 CRUD/启停/复制/改版本、运行时安装探测删除、账户 CRUD 与启动注入、插件与目录、整合包预览/导入/导出、Job+SSE、DSH 工作台反代（HTTP/SSE/WebSocket）；**core 105 + server 78 测试通过**。
 - 前端（pcl-dsh-web）：登录、首页、实例、运行时、账户、插件、目录、整合包、任务日志、设置/关于等页面；**Playwright E2E 11 用例通过**。
 - Linux 真实链路验收（WSL Ubuntu 24.04）：安装脚本/systemd/Nginx/静态前端/工作台反代/WS/SSE、重复安装、账户注入启动、整合包导出→下载→预览→导入全部通过；详见 docs/DEPLOYMENT_VALIDATION.md、docs/M0_RESULTS.md。
 - 发布链：一键生成自包含 Linux x64 部署包（jar + static + Node 24.22.1 + pnpm 10.34.0 + systemd/Nginx/卸载/重置密码脚本 + 源码包；支持 `-NodeTarball` 内置本地 Node 压缩包），见 Releases。
-- 待完成：在目标阿里云服务器按发布包 install.sh 做最终部署验收（需要你在服务器执行命令）。
+- 已知限制：远程访问时「DeepSeek 账号网页登录」需配合 SSH 隧道（上游 DSH 的 OAuth 回调仅接受回环地址 127.0.0.1）；实例页新增「直连登录」按钮，可一键复制隧道命令与回环直连地址，详见 docs/REMOTE_ACCOUNT_LOGIN.md。
 ## 实施记录与文档
 
 - 方案与取舍：docs/PORTING_ANALYSIS.md、docs/IMPLEMENTATION_PLAN.md
 - 工作台反代设计：docs/DSH_WORKBENCH_PROXY.md
 - Linux PoC 与部署验收记录：docs/M0_RESULTS.md、docs/DEPLOYMENT_VALIDATION.md
+- 远程账号登录限制与直连登录：docs/REMOTE_ACCOUNT_LOGIN.md
 - 开发与测试：docs/DEVELOPMENT.md；发布说明：docs/RELEASE_NOTES_0.3.1.md（历史：docs/RELEASE_NOTES_0.3.0.md）

@@ -7,6 +7,7 @@ import type {
   CatalogItem,
   CatalogPage,
   DeleteInstanceResult,
+  DirectAccess,
   InstallTarget,
   InstanceSummary,
   JobError,
@@ -169,6 +170,25 @@ export function normalizeWebUrl(raw: unknown): WebUrl {
   if (typeof raw === 'string') return { url: raw }
   const record = isRecord(raw) ? raw : {}
   return { url: asString(record.url ?? record.webUrl) }
+}
+
+/**
+ * GET /api/instances/{id}/direct-access：缺失字段按"未就绪"处理，
+ * 避免界面展示无法使用的直连地址。
+ */
+export function normalizeDirectAccess(raw: unknown): DirectAccess {
+  const record = isRecord(raw) ? raw : {}
+  const directUrl = asString(record.directUrl)
+  const portValue = typeof record.port === 'number' ? record.port : Number(asString(record.port))
+  return {
+    ready: record.ready === true && directUrl !== '',
+    port: Number.isFinite(portValue) ? portValue : 0,
+    directUrl: directUrl === '' ? null : directUrl,
+    tunnelCommand: asString(record.tunnelCommand),
+    sshHost: asString(record.sshHost),
+    sshUser: asString(record.sshUser) || 'root',
+    note: asString(record.note),
+  }
 }
 
 export function normalizeDeleteResult(raw: unknown): DeleteInstanceResult {

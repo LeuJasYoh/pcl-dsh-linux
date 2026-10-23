@@ -453,6 +453,58 @@ public class InstanceService {
         return address.toString();
     }
 
+    /**
+     * GET /api/instances/{id}/direct-access：远程账号网页登录的直连地址（含 token）与 SSH 隧道命令。
+     *
+     * <p>上游 DSH 的 DeepSeek 账号 OAuth 回调只接受回环地址（127.0.0.1/localhost），远程浏览器
+     * 无法直接完成网页登录。用户先用 SSH 隧道把实例端口映射到本机，在回环地址上完成一次登录即可；
+     * 凭据保存在服务器实例目录（dsh-home/.credentials.yaml），之后仍通过 /workbench/ 反代访问。</p>
+     *
+     * @param id         实例 id
+     * @param serverName 当前请求的服务器名（用于拼接隧道命令）
+     */
+    public ApiDtos.DirectAccessDto directAccess(String id, String serverName) {
+        Instance instance = require(id);
+        int port = instance.port();
+        String host = sshHost(serverName);
+        String user = "root";
+        boolean running = processes.running(id);
+        boolean ready = running && "运行中".equals(processes.status(instance));
+        String tunnel = "ssh -L " + port + ":127.0.0.1:" + port + " " + user + "@" + host;
+        if (!ready) {
+            return new ApiDtos.DirectAccessDto(false, port, null, tunnel, host, user,
+                    running ? "网页服务尚未确认就绪，请等待启动完成或检查任务日志。" : "实例未运行，请先启动实例。");
+        }
+        URI address = processes.webAddress(instance);
+        String path = address.getRawPath();
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        }
+        String query = address.getRawQuery();
+        if (query == null || query.isEmpty() || !query.contains("token=")) {
+            return new ApiDtos.DirectAccessDto(false, port, null, tunnel, host, user,
+                    "实例尚未返回访问 token（可能运行时版本不支持），请停止后重新启动实例再试。");
+        }
+        String directUrl = "http://127.0.0.1:" + port + path + "?" + query;
+        return new ApiDtos.DirectAccessDto(true, port, directUrl, tunnel, host, user,
+                "远程访问时 DeepSeek 账号网页登录只接受回环回调地址：先执行上方 SSH 隧道命令，"
+                        + "再在浏览器打开直连地址完成登录；登录凭据保存在服务器，之后可继续用工作台访问。");
+    }
+
+    /** 从请求的 serverName 去掉端口（IPv6 字面量保留方括号），用于拼接 SSH 隧道命令。 */
+    private static String sshHost(String serverName) {
+        String value = serverName == null ? "" : serverName.trim();
+        if (value.isEmpty()) {
+            return "服务器地址";
+        }
+        if (value.startsWith("[")) {
+            int end = value.indexOf(']');
+            return end > 0 ? value.substring(0, end + 1) : value;
+        }
+        int colon = value.indexOf(':');
+        return colon > 0 ? value.substring(0, colon) : value;
+    }
+
     /** POST /api/instances/{id}/launch：同步校验后提交 LAUNCH_INSTANCE 长任务（202 + Job）。 */
     public JobManager.View requestLaunch(String id, String ip) {
         Instance instance = require(id);

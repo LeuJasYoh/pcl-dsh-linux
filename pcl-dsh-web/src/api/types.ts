@@ -63,6 +63,22 @@ export interface WebUrl {
   url: string
 }
 
+/**
+ * GET /api/instances/{id}/direct-access：远程完成 DeepSeek 账号网页登录所需的直连信息。
+ *
+ * 上游 DSH 的账号 OAuth 回调只接受回环地址（127.0.0.1/localhost），远程浏览器无法直接完成
+ * 登录；需要先用 SSH 隧道把实例端口映射到本机，再打开 directUrl 完成一次登录。
+ */
+export interface DirectAccess {
+  ready: boolean
+  port: number
+  directUrl: string | null
+  tunnelCommand: string
+  sshHost: string
+  sshUser: string
+  note: string
+}
+
 /** POST/PUT instance payload (plan 4.2). port === null means "auto assign". */
 export interface InstanceInput {
   name: string

@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -402,6 +403,41 @@ class InstanceApiTest extends ApiTestSupport {
         mvc.perform(read(get("/api/instances/" + instanceB)))
                 .andExpect(status().isNotFound());
         assertTrue(store.list().stream().noneMatch(row -> row.id().equals(instanceB)));
+    }
+
+    /**
+     * 远程账号网页登录辅助接口：始终返回 SSH 隧道命令，但只有实例就绪且拿到访问 token 时才给直连地址。
+     */
+    @Test
+    @Order(9)
+    void directAccessExposesTunnelCommandAndRequiresReadyInstance() throws Exception {
+        // 匿名访问 → 401（JSON）
+        mvc.perform(get("/api/instances/" + instanceA + "/direct-access"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        // 未知实例 → 404
+        mvc.perform(read(get("/api/instances/i-000000000000/direct-access")))
+                .andExpect(status().isNotFound());
+        // 未运行：隧道命令可用，直连地址为空并提示先启动
+        mvc.perform(read(get("/api/instances/" + instanceA + "/direct-access")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ready").value(false))
+                .andExpect(jsonPath("$.port").value(portA))
+                .andExpect(jsonPath("$.directUrl").value(nullValue()))
+                .andExpect(jsonPath("$.tunnelCommand")
+                        .value(containsString("ssh -L " + portA + ":127.0.0.1:" + portA)))
+                .andExpect(jsonPath("$.note").value(containsString("请先启动实例")));
+        // 进程已启动但网页服务未确认就绪：仍不给直连地址
+        startFixtureProcess(instanceA);
+        try {
+            mvc.perform(read(get("/api/instances/" + instanceA + "/direct-access")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.ready").value(false))
+                    .andExpect(jsonPath("$.directUrl").value(nullValue()))
+                    .andExpect(jsonPath("$.note").value(containsString("就绪")));
+        } finally {
+            processes.stop(instanceA, line -> { });
+        }
     }
 
     // ------------------------------------------------------------------ 辅助

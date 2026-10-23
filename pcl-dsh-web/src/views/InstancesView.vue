@@ -8,6 +8,7 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppNotice from '@/components/AppNotice.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DirectAccessDialog from '@/components/DirectAccessDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import InstanceDialog from '@/components/InstanceDialog.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
@@ -31,6 +32,8 @@ const dialogError = ref('')
 const deleteTarget = ref<InstanceSummary | null>(null)
 const deleting = ref(false)
 const readonlyVersionProfile = ref(false)
+
+const directTarget = ref<InstanceSummary | null>(null)
 
 const copyTarget = ref<InstanceSummary | null>(null)
 const copyName = ref('')
@@ -227,6 +230,11 @@ async function openWeb(instance: InstanceSummary): Promise<void> {
   }
 }
 
+function openDirectAccess(instance: InstanceSummary): void {
+  if (busy.value) return
+  directTarget.value = instance
+}
+
 function askDelete(instance: InstanceSummary): void {
   if (busy.value) return
   deleteTarget.value = instance
@@ -407,6 +415,16 @@ async function confirmCopy(): Promise<void> {
                 class="btn btn-secondary"
                 type="button"
                 :disabled="busy"
+                title="远程完成 DeepSeek 账号网页登录（SSH 隧道 + 回环直连地址）"
+                :data-testid="'instance-direct-' + instance.id"
+                @click="openDirectAccess(instance)"
+              >
+                <AppIcon name="terminal" :size="15" />直连登录
+              </button>
+              <button
+                class="btn btn-secondary"
+                type="button"
+                :disabled="busy"
                 :data-testid="'instance-edit-' + instance.id"
                 @click="openEdit(instance)"
               >
@@ -436,6 +454,8 @@ async function confirmCopy(): Promise<void> {
         </div>
       </template>
     </div>
+
+    <DirectAccessDialog v-if="directTarget" :instance="directTarget" @close="directTarget = null" />
 
     <InstanceDialog
       v-if="dialogMode"

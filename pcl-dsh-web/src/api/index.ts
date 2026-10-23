@@ -7,6 +7,7 @@ import {
   normalizeBackgroundAsset,
   normalizeCatalogPage,
   normalizeDeleteResult,
+  normalizeDirectAccess,
   normalizeInstance,
   normalizeInstances,
   normalizeJobAccepted,
@@ -32,6 +33,7 @@ import type {
   BackgroundAsset,
   CatalogPage,
   DeleteInstanceResult,
+  DirectAccess,
   ExportPackInput,
   ImportPackInput,
   InstanceInput,
@@ -59,6 +61,7 @@ export type {
   CatalogItem,
   CatalogPage,
   DeleteInstanceResult,
+  DirectAccess,
   ExportPackInput,
   ImportPackInput,
   InstallTarget,
@@ -147,6 +150,12 @@ export const instancesApi = {
   stop: (id: string): Promise<unknown> => request<unknown>('POST', instancePath(id, '/stop')),
   webUrl: async (id: string): Promise<WebUrl> =>
     normalizeWebUrl(await request<unknown>('GET', instancePath(id, '/web-url'))),
+  /**
+   * 远程账号网页登录辅助：返回回环直连地址（含 token）与 SSH 隧道命令。
+   * 上游 DSH 的 OAuth 回调只接受回环地址，远程访问需按提示建立隧道完成一次登录。
+   */
+  directAccess: async (id: string): Promise<DirectAccess> =>
+    normalizeDirectAccess(await request<unknown>('GET', instancePath(id, '/direct-access'))),
 }
 
 export const runtimesApi = {
