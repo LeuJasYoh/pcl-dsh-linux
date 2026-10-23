@@ -184,19 +184,6 @@ systemctl start pcl-dsh-linux
 - 定期备份 data/（含 secret.key）；备份文件不要公开。
 - 不要把 8080/3080 暴露到公网，也不要在 Nginx 中新增指向实例端口的 location。
 
-### 2.7 可以在 Windows 上直接运行吗？
-
-**简短结论：官方发行包不行；Java 服务本体可以，但属于“技术可行、未官方验收”的手工运行方式。**
-
-- 发行包是 **Linux x64 专用**：里面是 Linux 版 Node 二进制、bash 安装/卸载脚本、systemd unit、Nginx 配置和 Linux 路径；不能拿到 Windows 上直接解压运行，也没有 Windows 安装包/服务封装。
-- **Java 服务本体是跨平台的**。本机实测：JDK 21 + 系统 Node（v24.22.1）可以启动 ~~release/pcl-dsh-linux.jar~~，~~/api/health~~ 返回 200，启动自检能识别系统 Node/pnpm。核心代码本身保留了 Windows 分支（~~node.exe~~、~~pnpm.cmd~~、~~.cmd~~ shim 等）。
-- 但服务端默认 **不提供前端静态资源**（~~spring.web.resources.add-mappings=false~~），所以还需要：
-  1. JDK 21（运行 jar）；
-  2. Node 24 + **pnpm 10.34.x**（建议精确匹配；其他 pnpm 版本未验证运行时安装）；
-  3. 前端：在 ~~pcl-dsh-web~~ 下 ~~npm ci && npm run dev~~（Vite 已配置把 ~~/api~~、~~/workbench~~ 代理到 ~~127.0.0.1:8080~~），或自己用 Windows Nginx 提供 ~~dist/~~ 并反向代理；
-  4. 手工启动：~~java -jar pcl-dsh-linux.jar --pcl.data-root=D:\pcl-data --server.port=8080~~（不要复用 Linux 的 ~~data/runtimes~~，DSH 原生模块必须为 Windows 重新安装）。
-- 不建议把 Windows 作为生产形态：没有 Windows 服务化/自动启动、没有 install.sh、账户密钥的 0600 权限在 Windows 上只能“尽力而为”、DSH 运行时/插件生态未验收。生产环境建议 Linux 服务器或 WSL2。
-
 ---
 
 ## 3. 使用指南
