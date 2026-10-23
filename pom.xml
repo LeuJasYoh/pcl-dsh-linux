@@ -6,7 +6,7 @@
 
   <groupId>com.pcl.dsh</groupId>
   <artifactId>pcl-dsh-parent</artifactId>
-  <version>0.3.0</version>
+  <version>0.3.1</version>
   <packaging>pom</packaging>
   <name>PCL-DSH-Linux</name>
   <description>Linux WebUI launcher for DeepSeek Harness</description>

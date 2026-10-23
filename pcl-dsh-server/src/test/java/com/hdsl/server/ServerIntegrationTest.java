@@ -97,7 +97,7 @@ class ServerIntegrationTest {
         mvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.version").value("0.3.0"))
+                .andExpect(jsonPath("$.version").value("0.3.1"))
                 .andExpect(jsonPath("$.uptimeSeconds").isNumber());
         // 首次启动生成 server.json 与初始密码文件（位于数据根，不在 config 下）
         assertTrue(Files.isRegularFile(DATA_ROOT.resolve("config/server.json")));
@@ -176,7 +176,7 @@ class ServerIntegrationTest {
         // 改密后状态接口可用，字段符合契约
         mvc.perform(get("/api/state").session(session))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value("0.3.0"))
+                .andExpect(jsonPath("$.version").value("0.3.1"))
                 .andExpect(jsonPath("$.status.code").value("READY"))
                 .andExpect(jsonPath("$.settings.registry").value("https://registry.npmjs.org"))
                 .andExpect(jsonPath("$.instances").isArray())

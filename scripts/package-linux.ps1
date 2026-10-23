@@ -1,8 +1,10 @@
 param(
-    [string]$Version = '0.3.0',
+    [string]$Version = '0.3.1',
     [string]$NodeVersion = '24.21.0',
     [string]$PnpmVersion = '10.34.0',
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    # Optional path to a local node-vX.Y.Z-linux-x64.tar.xz to bundle instead of downloading.
+    [string]$NodeTarball = ''
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -34,28 +36,48 @@ foreach ($item in @('install.sh', 'uninstall.sh', 'reset-password.sh', 'pcl-dsh-
     if (Test-Path $source) { Copy-Item $source (Join-Path $stage $item) }
 }
 
-Write-Output ('=== Downloading Node ' + $NodeVersion + ' linux-x64 ===')
 $buildTools = Join-Path $projectRoot '.build-tools'
 New-Item -ItemType Directory -Force $buildTools | Out-Null
-$archiveName = 'node-v' + $NodeVersion + '-linux-x64.tar.xz'
-$archivePath = Join-Path $buildTools $archiveName
+if ($NodeTarball) {
+    $localArchive = (Resolve-Path $NodeTarball).Path
+    if ($localArchive -notmatch 'node-v(\d+\.\d+\.\d+)-linux-x64\.tar\.xz$') {
+        throw ('NodeTarball must be a node-vX.Y.Z-linux-x64.tar.xz archive: ' + $localArchive)
+    }
+    $NodeVersion = $Matches[1]
+    Write-Output ('=== Using local Node archive (v' + $NodeVersion + ') ===')
+    $archiveName = 'node-v' + $NodeVersion + '-linux-x64.tar.xz'
+    $archivePath = Join-Path $buildTools $archiveName
+    Copy-Item $localArchive $archivePath -Force
+} else {
+    Write-Output ('=== Downloading Node ' + $NodeVersion + ' linux-x64 ===')
+    $archiveName = 'node-v' + $NodeVersion + '-linux-x64.tar.xz'
+    $archivePath = Join-Path $buildTools $archiveName
+    if (-not (Test-Path $archivePath)) {
+        Invoke-WebRequest ('https://nodejs.org/dist/v' + $NodeVersion + '/' + $archiveName) -OutFile $archivePath
+    }
+}
 $shasumsPath = Join-Path $buildTools ('SHASUMS256-' + $NodeVersion + '.txt')
-if (-not (Test-Path $archivePath)) {
-    Invoke-WebRequest ('https://nodejs.org/dist/v' + $NodeVersion + '/' + $archiveName) -OutFile $archivePath
-}
 if (-not (Test-Path $shasumsPath)) {
-    Invoke-WebRequest ('https://nodejs.org/dist/v' + $NodeVersion + '/SHASUMS256.txt') -OutFile $shasumsPath
+    try {
+        Invoke-WebRequest ('https://nodejs.org/dist/v' + $NodeVersion + '/SHASUMS256.txt') -OutFile $shasumsPath
+    } catch {
+        Write-Warning ('Cannot download SHASUMS256.txt; checksum verification will be skipped: ' + $_.Exception.Message)
+    }
 }
-$line = Get-Content $shasumsPath | Where-Object { $_ -match (' ' + [regex]::Escape($archiveName) + '$') } | Select-Object -First 1
-if (-not $line) { throw 'Cannot find Node checksum line.' }
-$expected = ($line -split '\s+')[0].ToLowerInvariant()
-$actual = (Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($expected -ne $actual) { throw 'Node archive checksum mismatch.' }
+if (Test-Path $shasumsPath) {
+    $line = Get-Content $shasumsPath | Where-Object { $_ -match (' ' + [regex]::Escape($archiveName) + '$') } | Select-Object -First 1
+    if (-not $line) { throw 'Cannot find Node checksum line.' }
+    $expected = ($line -split '\s+')[0].ToLowerInvariant()
+    $actual = (Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($expected -ne $actual) { throw 'Node archive checksum mismatch.' }
+    Write-Output 'Node archive checksum verified.'
+}
 
 $extractRoot = Join-Path $buildTools ('node-extract-' + $NodeVersion)
 Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $extractRoot | Out-Null
-& tar.exe -xJf $archivePath -C $extractRoot --exclude 'node-v24.21.0-linux-x64/bin/npm' --exclude 'node-v24.21.0-linux-x64/bin/npx' --exclude 'node-v24.21.0-linux-x64/bin/corepack'
+$nodePrefix = 'node-v' + $NodeVersion + '-linux-x64/'
+& tar.exe -xJf $archivePath -C $extractRoot --exclude ($nodePrefix + 'bin/npm') --exclude ($nodePrefix + 'bin/npx') --exclude ($nodePrefix + 'bin/corepack')
 if ($LASTEXITCODE -ne 0) { throw 'Failed to extract Node archive.' }
 $nodeSource = Join-Path $extractRoot ('node-v' + $NodeVersion + '-linux-x64')
 Copy-Item $nodeSource (Join-Path $release 'tools/node') -Recurse
